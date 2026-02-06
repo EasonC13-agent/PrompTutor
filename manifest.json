@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Chat Collector for Research",
+  "version": "0.1.0",
+  "description": "Optionally share your AI chat logs with researchers for educational research.",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://claude.ai/*"
+  ],
+  "background": {
+    "service_worker": "src/background/index.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
+      "js": ["src/content/inject.js", "src/adapters/chatgpt/index.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["src/content/inject.js", "src/adapters/claude/index.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/interceptor.js"],
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*"]
+    }
+  ]
+}
