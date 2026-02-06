@@ -1,86 +1,155 @@
 # Chat Collector for Research
 
-A browser extension that allows students to optionally share their AI chatbot conversations with researchers for educational research.
+一個開源的瀏覽器擴充功能，讓學生可以選擇性地將 AI 聊天記錄分享給研究人員，用於教育研究分析。
 
-## Supported Platforms
+## 專案狀態
 
-- ✅ ChatGPT (chat.openai.com, chatgpt.com)
-- ✅ Claude (claude.ai)
-- 🔜 Gemini
-- 🔜 Perplexity
+**開始日期**: 2026-02-06
+**目前階段**: MVP 開發中
 
-## Features
+### 已完成 ✅
 
-- **Opt-in consent**: Users explicitly enable data sharing
-- **API interception**: Captures clean JSON data directly from API responses
-- **DOM fallback**: Falls back to DOM parsing if API interception fails
-- **Offline-first**: Stores data locally and syncs when backend is available
-- **Privacy-focused**: No data is collected unless user enables it
+- [x] Chrome Extension 骨架 (Manifest V3)
+- [x] API 攔截器 (fetch interception for ChatGPT/Claude)
+- [x] DOM fallback adapter 架構
+- [x] Popup UI (使用條款 → Google 登入 → 主畫面)
+- [x] Backend API (Express + PostgreSQL)
+- [x] Firebase Auth 整合 (Google 登入)
+- [x] 使用者同意流程 (Terms of Service)
+- [x] 資料刪除功能 (GDPR compliance)
+- [x] 本地 PostgreSQL 設定
 
-## Development
+### 進行中 🔄
 
-### Load Extension (Chrome)
+- [ ] Ubuntu 雙主機 PostgreSQL replication 設定
+- [ ] Mac Mini 作為第三個 read replica
+- [ ] Extension 實際測試
 
-1. Open `chrome://extensions/`
-2. Enable "Developer mode"
-3. Click "Load unpacked"
-4. Select the `chat-collector` folder
+### 待開發 📋
 
-### Project Structure
+- [ ] 資料匿名化處理
+- [ ] Admin dashboard (查看統計)
+- [ ] 資料匯出功能 (CSV/JSON for researchers)
+- [ ] Chrome Web Store 上架
+- [ ] 更多平台支援 (Gemini, Perplexity)
+
+## 架構
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Chrome Extension                       │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
+│  │ Content     │  │ Background  │  │ Popup UI        │  │
+│  │ Scripts     │  │ Worker      │  │ (Terms/Login/   │  │
+│  │ (API 攔截)  │  │ (Sync)      │  │  Dashboard)     │  │
+│  └─────────────┘  └─────────────┘  └─────────────────┘  │
+└─────────────────────────┬───────────────────────────────┘
+                          │ HTTPS + Firebase Auth
+                          ▼
+┌─────────────────────────────────────────────────────────┐
+│                   Backend API (Express)                  │
+│  POST /api/consent    - 記錄同意                         │
+│  POST /api/chats      - 上傳聊天記錄                     │
+│  GET  /api/my-chats   - 查看自己的資料                   │
+│  DELETE /api/my-chats - 刪除自己的資料                   │
+│  GET  /api/admin/*    - Admin 專用 endpoints            │
+└─────────────────────────┬───────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────┐
+│              PostgreSQL (Replicated)                     │
+│  ┌───────────────┐  ┌───────────────┐  ┌─────────────┐  │
+│  │ Ubuntu 1      │  │ Ubuntu 2      │  │ Mac Mini    │  │
+│  │ (Primary/     │→ │ (Read         │→ │ (Read       │  │
+│  │  Write)       │  │  Replica)     │  │  Replica)   │  │
+│  └───────────────┘  └───────────────┘  └─────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+## 目錄結構
 
 ```
 chat-collector/
-├── manifest.json           # Extension manifest (v3)
+├── manifest.json              # Chrome Extension manifest
 ├── src/
-│   ├── background/         # Service worker
-│   │   └── index.js
-│   ├── content/            # Content scripts
-│   │   ├── inject.js       # Injector (runs in isolated world)
-│   │   └── interceptor.js  # API interceptor (runs in page context)
-│   ├── popup/              # Extension popup UI
-│   │   ├── index.html
-│   │   └── popup.js
-│   └── adapters/           # Platform-specific adapters
-│       ├── chatgpt/
-│       └── claude/
-└── icons/                  # Extension icons
+│   ├── background/index.js    # Service worker
+│   ├── content/
+│   │   ├── inject.js          # Injector script
+│   │   └── interceptor.js     # API interceptor
+│   ├── popup/
+│   │   ├── index.html         # Popup UI
+│   │   └── popup.js           # Popup logic
+│   └── adapters/
+│       ├── chatgpt/index.js   # ChatGPT adapter
+│       └── claude/index.js    # Claude adapter
+├── backend/
+│   ├── index.js               # Express server
+│   ├── package.json
+│   ├── .env.example
+│   └── scripts/
+│       └── init-db.js         # Database schema
+├── icons/                     # Extension icons
+└── README.md
 ```
 
-## Data Format
+## 環境變數
 
-Captured data is stored as JSON:
+```env
+# Server
+PORT=3000
+NODE_ENV=development
 
-```json
-{
-  "id": "uuid",
-  "capturedAt": "2024-01-15T12:00:00Z",
-  "platform": "chatgpt",
-  "url": "/backend-api/conversation",
-  "data": {
-    // Platform-specific response data
-  }
-}
+# PostgreSQL
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=chat_collector
+DB_USER=postgres
+DB_PASSWORD=
+
+# Firebase Admin SDK
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY=
+
+# Admin emails (comma-separated)
+ADMIN_EMAILS=admin@example.com
 ```
 
-## Backend API
+## 開發
 
-The extension sends data to a configurable backend endpoint:
+### 安裝 Backend
 
+```bash
+cd backend
+npm install
+cp .env.example .env
+# 編輯 .env 填入設定
+npm run db:init
+npm run dev
 ```
-POST /api/chats
-Content-Type: application/json
 
-{
-  "logs": [...]
-}
-```
+### 載入 Extension
 
-## Privacy & Consent
+1. 開啟 `chrome://extensions`
+2. 啟用 Developer mode
+3. 點擊 "Load unpacked"
+4. 選擇 `chat-collector` 資料夾
 
-- Data collection is **disabled by default**
-- Users must explicitly enable sharing via the extension popup
-- All data is anonymized before transmission
-- Data is used solely for educational research purposes
+## 使用條款重點
+
+- 上傳的資料將**完全匿名化**處理
+- 只上傳使用者**選擇的聊天 session**
+- 資料僅用於**教育研究用途**
+- 使用者可以隨時**查看並刪除**所有資料
+
+## 支援平台
+
+| 平台 | API 攔截 | DOM Fallback | 狀態 |
+|------|---------|--------------|------|
+| ChatGPT | ✅ | ✅ | 開發中 |
+| Claude | ✅ | ✅ | 開發中 |
+| Gemini | ❌ | ❌ | 計畫中 |
+| Perplexity | ❌ | ❌ | 計畫中 |
 
 ## License
 

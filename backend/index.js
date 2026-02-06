@@ -8,15 +8,24 @@ dotenv.config();
 
 const { Pool } = pg;
 
-// Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
+// Initialize Firebase Admin (optional - for development without Firebase)
+let firebaseEnabled = false;
+if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      }),
+    });
+    firebaseEnabled = true;
+    console.log('Firebase Admin initialized');
+  } catch (error) {
+    console.warn('Firebase Admin initialization failed:', error.message);
+  }
+} else {
+  console.warn('Firebase credentials not configured - running in dev mode (no auth)');
 }
 
 const app = express();
@@ -41,6 +50,18 @@ app.use(express.json({ limit: '10mb' }));
 
 // Auth middleware - verifies Firebase token
 async function authenticate(req, res, next) {
+  // Dev mode: allow x-dev-user header for testing
+  if (!firebaseEnabled && req.headers['x-dev-user']) {
+    const devEmail = req.headers['x-dev-user'];
+    req.user = {
+      uid: `dev-${devEmail}`,
+      email: devEmail,
+      name: devEmail.split('@')[0],
+      isAdmin: ADMIN_EMAILS.includes(devEmail),
+    };
+    return next();
+  }
+  
   const authHeader = req.headers.authorization;
   
   if (!authHeader?.startsWith('Bearer ')) {
@@ -48,6 +69,17 @@ async function authenticate(req, res, next) {
   }
   
   const token = authHeader.split('Bearer ')[1];
+  
+  // Dev mode: accept any token
+  if (!firebaseEnabled) {
+    req.user = {
+      uid: `dev-${token}`,
+      email: 'dev@test.local',
+      name: 'Dev User',
+      isAdmin: true,
+    };
+    return next();
+  }
   
   try {
     const decodedToken = await admin.auth().verifyIdToken(token);
