@@ -5,8 +5,13 @@
   "description": "Optionally share your AI chat logs with researchers for educational research.",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "identity"
   ],
+  "oauth2": {
+    "client_id": "YOUR_CHROME_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": ["openid", "email", "profile"]
+  },
   "host_permissions": [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
