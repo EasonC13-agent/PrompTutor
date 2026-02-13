@@ -1,20 +1,25 @@
-// Popup UI logic with Firebase Auth
+// Popup UI logic with Chrome Identity API (Google OAuth)
 
-// Config - will be replaced during build
+// Config - will be replaced during build or set via storage
 const CONFIG = {
-  apiEndpoint: 'http://localhost:3000',
-  firebaseConfig: {
-    apiKey: 'YOUR_FIREBASE_API_KEY',
-    authDomain: 'YOUR_PROJECT.firebaseapp.com',
-    projectId: 'YOUR_PROJECT_ID',
-  }
+  apiEndpoint: 'https://YOUR_SERVER_URL',
 };
+
+// Hash email for anonymous ID
+async function hashEmail(email) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(email.toLowerCase().trim());
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 // State
 let currentUser = null;
-let idToken = null;
+let accessToken = null;
 
 // DOM Elements
+const loadingView = document.getElementById('loadingView');
 const termsView = document.getElementById('termsView');
 const loginView = document.getElementById('loginView');
 const mainView = document.getElementById('mainView');
@@ -35,48 +40,53 @@ const userName = document.getElementById('userName');
 const userEmail = document.getElementById('userEmail');
 const userAvatar = document.getElementById('userAvatar');
 
+const modeRadios = document.querySelectorAll('input[name="mode"]');
+
+// Mode change handler
+modeRadios.forEach(radio => {
+  radio.addEventListener('change', async (e) => {
+    await chrome.storage.local.set({ mode: e.target.value });
+  });
+});
+
 // Show a specific view
 function showView(viewId) {
-  [termsView, loginView, mainView].forEach(v => v.classList.remove('active'));
+  [loadingView, termsView, loginView, mainView].forEach(v => v.classList.remove('active'));
   document.getElementById(viewId).classList.add('active');
 }
 
 // Initialize
 async function init() {
+  // Load config
+  const config = await chrome.storage.local.get(['apiEndpoint']);
+  if (config.apiEndpoint) {
+    CONFIG.apiEndpoint = config.apiEndpoint;
+  }
+  
   // Load stored state
   const stored = await chrome.storage.local.get([
-    'user', 'idToken', 'hasConsented', 'enabled', 'pendingData'
+    'user', 'accessToken', 'hasConsented', 'enabled', 'pendingData', 'mode'
   ]);
   
-  if (stored.user && stored.idToken) {
+  if (stored.user && stored.accessToken) {
     currentUser = stored.user;
-    idToken = stored.idToken;
+    accessToken = stored.accessToken;
     
-    // Verify token is still valid
-    const valid = await verifyToken();
-    if (valid) {
-      updateMainView(stored.enabled ?? false, stored.pendingData?.length ?? 0);
-      showView('mainView');
-      return;
-    }
+    // Set mode radio
+    const mode = stored.mode || 'collect';
+    const modeRadio = document.querySelector(`input[name="mode"][value="${mode}"]`);
+    if (modeRadio) modeRadio.checked = true;
+
+    // User is logged in locally - show main view
+    updateMainView(stored.enabled ?? false, stored.pendingData?.length ?? 0);
+    showView('mainView');
+    return;
   }
   
   if (stored.hasConsented) {
     showView('loginView');
   } else {
     showView('termsView');
-  }
-}
-
-// Verify token with backend
-async function verifyToken() {
-  try {
-    const response = await fetch(`${CONFIG.apiEndpoint}/api/consent`, {
-      headers: { 'Authorization': `Bearer ${idToken}` }
-    });
-    return response.ok;
-  } catch {
-    return false;
   }
 }
 
@@ -96,58 +106,67 @@ backToTerms.addEventListener('click', () => {
   showView('termsView');
 });
 
-// Google Login
+// Google Login using Chrome Identity API
 googleLoginBtn.addEventListener('click', async () => {
   googleLoginBtn.disabled = true;
-  googleLoginBtn.textContent = '登入中...';
+  googleLoginBtn.textContent = 'Signing in...';
   
   try {
-    // Use Chrome Identity API
+    // Get OAuth token via Chrome Identity API
     const authResult = await chrome.identity.getAuthToken({ 
       interactive: true,
       scopes: ['openid', 'email', 'profile']
     });
     
-    if (authResult.token) {
-      // Exchange Chrome token for Firebase token
-      // Note: In production, you'd use Firebase Auth with Google credential
-      const userInfo = await fetch(
-        `https://www.googleapis.com/oauth2/v3/userinfo`,
-        { headers: { 'Authorization': `Bearer ${authResult.token}` } }
-      ).then(r => r.json());
-      
-      currentUser = {
-        email: userInfo.email,
-        name: userInfo.name,
-        picture: userInfo.picture,
-      };
-      
-      // For now, use the Google token directly
-      // In production, exchange this for a Firebase ID token
-      idToken = authResult.token;
-      
-      // Register consent with backend
-      await fetch(`${CONFIG.apiEndpoint}/api/consent`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({ agreed: true })
-      });
-      
-      // Save state
-      await chrome.storage.local.set({
-        user: currentUser,
-        idToken: idToken,
-      });
-      
-      updateMainView(false, 0);
-      showView('mainView');
+    if (!authResult.token) {
+      throw new Error('No token received from Google');
     }
+    
+    // Get user info from Google
+    const userInfoRes = await fetch(
+      'https://www.googleapis.com/oauth2/v3/userinfo',
+      { headers: { 'Authorization': `Bearer ${authResult.token}` } }
+    );
+    
+    if (!userInfoRes.ok) {
+      // Token might be invalid, clear it and retry
+      await chrome.identity.removeCachedAuthToken({ token: authResult.token });
+      throw new Error('Failed to get user info. Please try again.');
+    }
+    
+    const userInfo = await userInfoRes.json();
+    
+    // Generate anonymous user ID from email hash
+    const emailHash = await hashEmail(userInfo.email);
+    
+    currentUser = {
+      email: userInfo.email,
+      name: userInfo.name,
+      picture: userInfo.picture,
+      anonId: emailHash, // Anonymous ID for server
+    };
+    
+    accessToken = authResult.token;
+    
+    // Save state locally - no backend verification needed
+    await chrome.storage.local.set({
+      user: currentUser,
+      accessToken: accessToken,
+      hasConsented: true,
+    });
+    
+    updateMainView(false, 0);
+    showView('mainView');
+    
   } catch (error) {
     console.error('Login error:', error);
-    alert('登入失敗，請重試');
+    // Clear cached token on error so user can retry
+    if (accessToken) {
+      try {
+        await chrome.identity.removeCachedAuthToken({ token: accessToken });
+      } catch (e) { /* ignore */ }
+    }
+    alert(`Login failed: ${error.message || 'Unknown error'}`);
   } finally {
     googleLoginBtn.disabled = false;
     googleLoginBtn.innerHTML = `
@@ -157,7 +176,7 @@ googleLoginBtn.addEventListener('click', async () => {
         <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
         <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
       </svg>
-      使用 Google 登入
+      Sign in with Google
     `;
   }
 });
@@ -170,18 +189,18 @@ function updateMainView(enabled, pending) {
   
   enableToggle.checked = enabled;
   status.className = `status ${enabled ? 'enabled' : 'disabled'}`;
-  statusText.textContent = enabled ? '收集中' : '已停用';
-  pendingCount.textContent = pending;
+  statusText.textContent = enabled ? 'Collecting' : 'Disabled';
   
-  // Get uploaded count
+  // Get counts
+  updateLocalCount();
   fetchUploadedCount();
 }
 
-// Fetch uploaded count
+// Fetch uploaded count from server
 async function fetchUploadedCount() {
   try {
     const response = await fetch(`${CONFIG.apiEndpoint}/api/my-chats?limit=1`, {
-      headers: { 'Authorization': `Bearer ${idToken}` }
+      headers: { 'X-User-Id': currentUser?.anonId }
     });
     if (response.ok) {
       const data = await response.json();
@@ -189,7 +208,19 @@ async function fetchUploadedCount() {
     }
   } catch (error) {
     console.error('Failed to fetch count:', error);
+    uploadedCount.textContent = '?';
   }
+}
+
+// Update local (pending) count from cache
+async function updateLocalCount() {
+  const stored = await chrome.storage.local.get(['conversationCache']);
+  const cache = stored.conversationCache || {};
+  let total = 0;
+  for (const url in cache) {
+    total += cache[url]?.data?.length || 0;
+  }
+  pendingCount.textContent = total;
 }
 
 // Toggle enable
@@ -201,27 +232,28 @@ enableToggle.addEventListener('change', async () => {
   // Notify background worker
   chrome.runtime.sendMessage({ type: 'TOGGLE_ENABLED', enabled });
   
+  const currentMode = document.querySelector('input[name="mode"]:checked')?.value || 'collect';
   status.className = `status ${enabled ? 'enabled' : 'disabled'}`;
-  statusText.textContent = enabled ? '收集中' : '已停用';
+  statusText.textContent = enabled ? (currentMode === 'guidance' ? 'Collecting + Guidance' : 'Collecting') : 'Disabled';
 });
 
 // Sync button
 syncBtn.addEventListener('click', async () => {
   syncBtn.disabled = true;
-  syncBtn.textContent = '同步中...';
+  syncBtn.textContent = 'Syncing...';
   
-  chrome.runtime.sendMessage({ type: 'SYNC_NOW', idToken }, (response) => {
+  chrome.runtime.sendMessage({ type: 'SYNC_NOW', accessToken }, (response) => {
     if (response?.success) {
-      syncBtn.textContent = `已同步 ${response.synced} 筆!`;
+      syncBtn.textContent = `Synced ${response.synced} logs!`;
       pendingCount.textContent = '0';
       fetchUploadedCount();
     } else {
-      syncBtn.textContent = `錯誤: ${response?.error || '未知'}`;
+      syncBtn.textContent = `Error: ${response?.error || 'Unknown'}`;
     }
     
     setTimeout(() => {
       syncBtn.disabled = false;
-      syncBtn.textContent = '立即同步';
+      syncBtn.textContent = 'Sync Now';
     }, 2000);
   });
 });
@@ -230,62 +262,69 @@ syncBtn.addEventListener('click', async () => {
 viewDataBtn.addEventListener('click', () => {
   // Open a new tab with user's data view
   chrome.tabs.create({ 
-    url: `${CONFIG.apiEndpoint}/view?token=${idToken}` 
+    url: `${CONFIG.apiEndpoint}/view?userId=${currentUser?.anonId}` 
   });
 });
 
 // Delete all data
 deleteDataBtn.addEventListener('click', async () => {
   const confirmed = confirm(
-    '確定要刪除所有已上傳的資料嗎？此操作無法復原。\n' +
-    'Are you sure you want to delete all your uploaded data? This cannot be undone.'
+    'Are you sure you want to delete all your uploaded data? This action cannot be undone.'
   );
   
   if (!confirmed) return;
   
   deleteDataBtn.disabled = true;
-  deleteDataBtn.textContent = '刪除中...';
+  deleteDataBtn.textContent = 'Deleting...';
   
   try {
     const response = await fetch(`${CONFIG.apiEndpoint}/api/my-chats`, {
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${idToken}` }
+      headers: { 'X-User-Id': currentUser?.anonId }
     });
     
     if (response.ok) {
       const data = await response.json();
-      alert(`已刪除 ${data.deleted} 筆資料`);
+      alert(`Deleted ${data.deleted} logs`);
       uploadedCount.textContent = '0';
     } else {
-      alert('刪除失敗，請重試');
+      alert('Delete failed. Please try again.');
     }
   } catch (error) {
     console.error('Delete error:', error);
-    alert('刪除失敗，請重試');
+    alert('Delete failed. Please try again.');
   } finally {
     deleteDataBtn.disabled = false;
-    deleteDataBtn.textContent = '刪除所有資料';
+    deleteDataBtn.textContent = 'Delete All Data';
   }
 });
 
 // Logout
 logoutBtn.addEventListener('click', async () => {
   // Clear Chrome identity token
-  if (idToken) {
+  if (accessToken) {
     try {
-      await chrome.identity.removeCachedAuthToken({ token: idToken });
+      await chrome.identity.removeCachedAuthToken({ token: accessToken });
     } catch (e) {
       console.error('Failed to remove token:', e);
     }
   }
   
-  // Clear storage
-  await chrome.storage.local.remove(['user', 'idToken', 'enabled']);
+  // Also clear all auth tokens
+  try {
+    await chrome.identity.clearAllCachedAuthTokens();
+  } catch (e) {
+    console.error('Failed to clear all tokens:', e);
+  }
+  
+  // Clear ALL data including consent
+  await chrome.storage.local.clear();
   
   currentUser = null;
-  idToken = null;
+  accessToken = null;
   
-  showView('loginView');
+  // Go back to terms page
+  showView('termsView');
 });
 
 // Initialize on load

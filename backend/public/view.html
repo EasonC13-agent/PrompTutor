@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>My Chat Data - Chat Collector</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 { margin-bottom: 20px; }
+    .stats {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .chat-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .chat-item {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      cursor: pointer;
+    }
+    .chat-item:hover {
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    .chat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .chat-platform {
+      font-weight: 600;
+      color: #333;
+    }
+    .chat-time {
+      font-size: 12px;
+      color: #666;
+    }
+    .chat-url {
+      font-size: 12px;
+      color: #999;
+      word-break: break-all;
+      margin-bottom: 8px;
+    }
+    .chat-preview {
+      font-size: 13px;
+      color: #555;
+      background: #f9f9f9;
+      padding: 8px;
+      border-radius: 4px;
+      max-height: 60px;
+      overflow: hidden;
+      white-space: pre-wrap;
+    }
+    .chat-details {
+      display: none;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #eee;
+    }
+    .chat-item.expanded .chat-details {
+      display: block;
+    }
+    .chat-item.expanded .chat-preview {
+      max-height: none;
+    }
+    .message {
+      margin-bottom: 12px;
+      padding: 10px;
+      border-radius: 8px;
+    }
+    .message.user {
+      background: #e3f2fd;
+      margin-left: 20px;
+    }
+    .message.assistant {
+      background: #f5f5f5;
+      margin-right: 20px;
+    }
+    .message-role {
+      font-weight: 600;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .message-content {
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+    .raw-data {
+      background: #1e1e1e;
+      color: #ddd;
+      padding: 12px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 11px;
+      max-height: 300px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    .toggle-raw {
+      font-size: 12px;
+      color: #666;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .toggle-raw:hover { color: #333; }
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn-danger {
+      background: #ffebee;
+      color: #d32f2f;
+      border: 1px solid #d32f2f;
+    }
+    .btn-danger:hover { background: #ffcdd2; }
+    .empty {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .error {
+      background: #ffebee;
+      color: #d32f2f;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>📊 My Chat Data</h1>
+  
+  <div id="error" class="error" style="display: none;"></div>
+  
+  <div class="stats">
+    <strong>Total uploaded:</strong> <span id="total">0</span> logs
+  </div>
+  
+  <div id="chatList" class="chat-list">
+    <div class="empty">Loading...</div>
+  </div>
+  
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const userId = params.get('userId');
+    
+    if (!userId) {
+      document.getElementById('error').textContent = 'No user ID. Please access this page from the extension.';
+      document.getElementById('error').style.display = 'block';
+      document.getElementById('chatList').innerHTML = '';
+    } else {
+      loadData();
+    }
+    
+    async function loadData() {
+      try {
+        const res = await fetch('/api/my-chats?limit=100', {
+          headers: { 'X-User-Id': userId }
+        });
+        
+        if (!res.ok) {
+          throw new Error(`Failed to load data: ${res.status}`);
+        }
+        
+        const data = await res.json();
+        document.getElementById('total').textContent = data.total;
+        
+        if (data.logs.length === 0) {
+          document.getElementById('chatList').innerHTML = '<div class="empty">No data uploaded yet.</div>';
+          return;
+        }
+        
+        // Fetch full data for each log
+        const fullLogs = await Promise.all(data.logs.map(async (log) => {
+          const fullRes = await fetch(`/api/chat/${log.id}`, {
+            headers: { 'X-User-Id': userId }
+          });
+          if (fullRes.ok) {
+            return await fullRes.json();
+          }
+          return log;
+        }));
+        
+        document.getElementById('chatList').innerHTML = fullLogs.map(log => {
+          const preview = extractPreview(log.raw_data);
+          const messages = extractMessages(log.raw_data);
+          
+          return `
+            <div class="chat-item" onclick="this.classList.toggle('expanded')">
+              <div class="chat-header">
+                <span class="chat-platform">${log.platform}</span>
+                <span class="chat-time">${new Date(log.captured_at).toLocaleString()}</span>
+              </div>
+              <div class="chat-url">${log.url || 'N/A'}</div>
+              <div class="chat-preview">${escapeHtml(preview)}</div>
+              <div class="chat-details">
+                ${messages.length > 0 ? `
+                  <div class="messages">
+                    ${messages.map(m => `
+                      <div class="message ${m.role}">
+                        <div class="message-role">${m.role}</div>
+                        <div class="message-content">${escapeHtml(m.content)}</div>
+                      </div>
+                    `).join('')}
+                  </div>
+                ` : ''}
+                <div class="toggle-raw" onclick="event.stopPropagation(); this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                  📋 Toggle Raw JSON
+                </div>
+                <pre class="raw-data" style="display: none">${escapeHtml(JSON.stringify(log.raw_data, null, 2))}</pre>
+              </div>
+            </div>
+          `;
+        }).join('');
+        
+      } catch (error) {
+        document.getElementById('error').textContent = error.message;
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('chatList').innerHTML = '';
+      }
+    }
+    
+    function extractPreview(data) {
+      if (!data) return 'No data';
+      
+      // Try to extract meaningful content
+      if (data.streaming && data.chunks) {
+        // SSE streaming response - extract message content
+        const texts = [];
+        for (const chunk of data.chunks) {
+          if (chunk.message?.content?.parts) {
+            texts.push(chunk.message.content.parts.join(''));
+          }
+        }
+        return texts.join('') || 'Streaming response';
+      }
+      
+      if (data.message?.content?.parts) {
+        return data.message.content.parts.join('');
+      }
+      
+      if (typeof data === 'string') return data;
+      
+      return JSON.stringify(data).slice(0, 200) + '...';
+    }
+    
+    function extractMessages(data) {
+      const messages = [];
+      
+      if (!data) return messages;
+      
+      // Handle streaming chunks
+      if (data.streaming && data.chunks) {
+        let currentContent = '';
+        let currentRole = 'assistant';
+        
+        for (const chunk of data.chunks) {
+          if (chunk.message?.author?.role) {
+            currentRole = chunk.message.author.role;
+          }
+          if (chunk.message?.content?.parts) {
+            currentContent = chunk.message.content.parts.join('');
+          }
+        }
+        
+        if (currentContent) {
+          messages.push({ role: currentRole, content: currentContent });
+        }
+      }
+      
+      // Handle regular conversation response
+      if (data.message?.content?.parts) {
+        messages.push({
+          role: data.message.author?.role || 'assistant',
+          content: data.message.content.parts.join('')
+        });
+      }
+      
+      return messages;
+    }
+    
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

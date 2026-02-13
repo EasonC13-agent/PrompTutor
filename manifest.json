@@ -5,32 +5,39 @@
   "description": "Optionally share your AI chat logs with researchers for educational research.",
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "activeTab",
-    "identity"
+    "identity",
+    "alarms"
   ],
   "oauth2": {
-    "client_id": "YOUR_CHROME_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
     "scopes": ["openid", "email", "profile"]
   },
   "host_permissions": [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
-    "https://claude.ai/*"
+    "https://claude.ai/*",
+    "https://YOUR_SERVER_URL/*"
   ],
   "background": {
-    "service_worker": "src/background/index.js",
-    "type": "module"
+    "service_worker": "src/background/index.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*"],
-      "js": ["src/content/inject.js", "src/adapters/chatgpt/index.js"],
-      "run_at": "document_start"
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*"],
+      "js": ["src/content/dom-parser.js", "src/content/bridge.js"],
+      "run_at": "document_idle"
     },
     {
-      "matches": ["https://claude.ai/*"],
-      "js": ["src/content/inject.js", "src/adapters/claude/index.js"],
-      "run_at": "document_start"
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*"],
+      "js": ["src/content/overlay.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*"],
+      "js": ["src/content/guidance.js", "src/content/detector.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": {
