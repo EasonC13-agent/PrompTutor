@@ -1,0 +1,17 @@
+{
+  "name": "chat-collector",
+  "version": "1.0.0",
+  "description": "一個開源的瀏覽器擴充功能，讓學生可以選擇性地將 AI 聊天記錄分享給研究人員，用於教育研究分析。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:e2e": "node test/e2e.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "puppeteer": "^24.37.2"
+  }
+}

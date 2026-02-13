@@ -27,3 +27,6 @@ Thumbs.db
 
 # Test
 coverage/
+.test-chrome-profile
+node_modules/
+.test-chrome-profile/
