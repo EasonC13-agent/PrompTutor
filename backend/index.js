@@ -22,7 +22,7 @@ if (!googleClient) {
   console.warn('GOOGLE_CLIENT_ID not configured - running in dev mode (no auth)');
 }
 // OpenAI client for answer-seeking detection
-// NOTE: Eason needs to set OPENAI_API_KEY in .env
+// NOTE: Set ANTHROPIC_API_KEY in .env for detection
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;

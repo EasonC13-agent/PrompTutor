@@ -30,3 +30,4 @@ coverage/
 .test-chrome-profile
 node_modules/
 .test-chrome-profile/
+backend/.env
