@@ -112,14 +112,14 @@
   document.head.appendChild(style);
 
   // Show "Checking..." indicator
-  window.ccGuidanceShowChecking = function() {
+  window.ccGuidanceShowChecking = function(msg) {
     let el = document.getElementById('cc-checking-indicator');
     if (!el) {
       el = document.createElement('div');
       el.id = 'cc-checking-indicator';
       document.body.appendChild(el);
     }
-    el.textContent = '🔍 Checking your prompt...';
+    el.textContent = msg || '🔍 Checking your prompt...';
     el.style.display = 'block';
   };
 

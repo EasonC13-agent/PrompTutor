@@ -61,6 +61,17 @@
         color: #333;
         user-select: none;
       }
+      .cc-label.clickable {
+        cursor: pointer;
+        text-decoration: underline dotted;
+      }
+      .cc-label.clickable:hover {
+        color: #2e7d32;
+      }
+      .cc-label.analyzing {
+        opacity: 0.6;
+        pointer-events: none;
+      }
       .cc-switch {
         position: relative;
         width: 36px;
@@ -168,6 +179,7 @@
       toggle.className = isEnabled ? 'collecting' : '';
       indicator.className = isEnabled ? 'cc-indicator active' : 'cc-indicator';
       label.textContent = isEnabled ? (currentMode === 'guidance' ? 'Collecting + Guidance' : 'Collecting') : 'Share Data';
+      // Hidden feature: clicking label in guidance mode triggers analysis (no visual hint)
       checkbox.checked = isEnabled;
       checkbox.disabled = false;
     }
@@ -189,6 +201,23 @@
     updateUI();
   });
   
+  // Click on label to trigger guidance analysis
+  label.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!isLoggedIn) {
+      alert('Please sign in to Chat Collector first by clicking the extension icon in your browser toolbar.');
+      return;
+    }
+    if (!isEnabled || currentMode !== 'guidance') return;
+    if (typeof window.ccAnalyzeAndGuide === 'function') {
+      label.classList.add('analyzing');
+      label.textContent = 'Analyzing...';
+      await window.ccAnalyzeAndGuide(true);
+      label.classList.remove('analyzing');
+      updateUI();
+    }
+  });
+
   // Click on overlay when not logged in
   toggle.addEventListener('click', (e) => {
     if (!isLoggedIn && e.target !== checkbox) {

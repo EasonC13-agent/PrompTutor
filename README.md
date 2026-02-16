@@ -1,155 +1,148 @@
-# Chat Collector for Research
+# PrompTutor
 
-一個開源的瀏覽器擴充功能，讓學生可以選擇性地將 AI 聊天記錄分享給研究人員，用於教育研究分析。
+An open-source browser extension for **data collection** and **real-time intervention** in student-chatbot interactions. PrompTutor combines privacy-preserving conversation logging with scaffolding that detects answer-seeking behavior and nudges students toward help-seeking queries.
 
-## 專案狀態
+## Features
 
-**開始日期**: 2026-02-06
-**目前階段**: MVP 開發中
+### 1. Privacy-Preserving Data Collection
+- Captures student-AI conversations from **ChatGPT** and **Claude** via DOM parsing
+- Client-side **SHA-256 email hashing** for anonymous identification
+- **Per-conversation consent toggle** — students choose what to share
+- Full data transparency: students can view and delete their data at any time
 
-### 已完成 ✅
+### 2. Real-Time Prompt Guidance
+- Detects **answer-seeking behavior** (e.g., "solve this for me") using LLM-based classification
+- Displays a **scaffolding overlay** suggesting rephrased, help-seeking queries
+- Three response options: **Use Suggestion**, **Edit My Prompt**, or **Send Anyway**
+- All guidance interactions are logged for research analysis
 
-- [x] Chrome Extension 骨架 (Manifest V3)
-- [x] API 攔截器 (fetch interception for ChatGPT/Claude)
-- [x] DOM fallback adapter 架構
-- [x] Popup UI (使用條款 → Google 登入 → 主畫面)
-- [x] Backend API (Express + PostgreSQL)
-- [x] Firebase Auth 整合 (Google 登入)
-- [x] 使用者同意流程 (Terms of Service)
-- [x] 資料刪除功能 (GDPR compliance)
-- [x] 本地 PostgreSQL 設定
-
-### 進行中 🔄
-
-- [ ] Ubuntu 雙主機 PostgreSQL replication 設定
-- [ ] Mac Mini 作為第三個 read replica
-- [ ] Extension 實際測試
-
-### 待開發 📋
-
-- [ ] 資料匿名化處理
-- [ ] Admin dashboard (查看統計)
-- [ ] 資料匯出功能 (CSV/JSON for researchers)
-- [ ] Chrome Web Store 上架
-- [ ] 更多平台支援 (Gemini, Perplexity)
-
-## 架構
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   Chrome Extension                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
-│  │ Content     │  │ Background  │  │ Popup UI        │  │
-│  │ Scripts     │  │ Worker      │  │ (Terms/Login/   │  │
-│  │ (API 攔截)  │  │ (Sync)      │  │  Dashboard)     │  │
-│  └─────────────┘  └─────────────┘  └─────────────────┘  │
-└─────────────────────────┬───────────────────────────────┘
-                          │ HTTPS + Firebase Auth
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│                   Backend API (Express)                  │
-│  POST /api/consent    - 記錄同意                         │
-│  POST /api/chats      - 上傳聊天記錄                     │
-│  GET  /api/my-chats   - 查看自己的資料                   │
-│  DELETE /api/my-chats - 刪除自己的資料                   │
-│  GET  /api/admin/*    - Admin 專用 endpoints            │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│              PostgreSQL (Replicated)                     │
-│  ┌───────────────┐  ┌───────────────┐  ┌─────────────┐  │
-│  │ Ubuntu 1      │  │ Ubuntu 2      │  │ Mac Mini    │  │
-│  │ (Primary/     │→ │ (Read         │→ │ (Read       │  │
-│  │  Write)       │  │  Replica)     │  │  Replica)   │  │
-│  └───────────────┘  └───────────────┘  └─────────────┘  │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                   Chrome Extension (Manifest V3)          │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐  │
+│  │ Content       │  │ Background   │  │ Popup UI       │  │
+│  │ Scripts       │  │ Worker       │  │ (Auth/Settings/ │  │
+│  │ (DOM Parser,  │  │ (Sync,       │  │  Consent)      │  │
+│  │  Detector,    │  │  Alarms)     │  │                │  │
+│  │  Guidance UI) │  │              │  │                │  │
+│  └──────────────┘  └──────────────┘  └────────────────┘  │
+└────────────────────────────┬─────────────────────────────┘
+                             │ HTTPS + Google Auth
+                             ▼
+┌──────────────────────────────────────────────────────────┐
+│                   Backend API (Node.js + Express)         │
+│  POST /api/chats         - Upload anonymized chat logs   │
+│  POST /api/detect        - Answer-seeking classification │
+│  POST /api/guidance-log  - Log guidance interactions     │
+│  GET  /api/my-chats      - View own data                 │
+│  DELETE /api/my-chats    - Delete own data (GDPR)        │
+│  GET  /api/admin/*       - Admin dashboard endpoints     │
+└────────────────────────────┬─────────────────────────────┘
+                             │
+                             ▼
+                    PostgreSQL Database
 ```
 
-## 目錄結構
+## Project Structure
 
 ```
-chat-collector/
-├── manifest.json              # Chrome Extension manifest
+PrompTutor/
+├── manifest.json               # Chrome Extension manifest (V3)
 ├── src/
-│   ├── background/index.js    # Service worker
+│   ├── background/index.js     # Service worker (sync, alarms)
 │   ├── content/
-│   │   ├── inject.js          # Injector script
-│   │   └── interceptor.js     # API interceptor
+│   │   ├── dom-parser.js       # Conversation capture via MutationObserver
+│   │   ├── bridge.js           # Isolated world communication
+│   │   ├── overlay.js          # Floating status indicator + toggle
+│   │   ├── detector.js         # Answer-seeking detection (click-to-analyze)
+│   │   └── guidance.js         # Scaffolding intervention overlay UI
 │   ├── popup/
-│   │   ├── index.html         # Popup UI
-│   │   └── popup.js           # Popup logic
+│   │   ├── index.html          # Extension popup
+│   │   └── popup.js            # Auth, consent, mode selection
 │   └── adapters/
-│       ├── chatgpt/index.js   # ChatGPT adapter
-│       └── claude/index.js    # Claude adapter
+│       ├── chatgpt/index.js    # ChatGPT DOM adapter
+│       └── claude/index.js     # Claude DOM adapter
 ├── backend/
-│   ├── index.js               # Express server
-│   ├── package.json
-│   ├── .env.example
-│   └── scripts/
-│       └── init-db.js         # Database schema
-├── icons/                     # Extension icons
+│   ├── index.js                # Express server
+│   └── scripts/init-db.js     # Database schema
+├── icons/                      # Extension icons
 └── README.md
 ```
 
-## 環境變數
+## Getting Started
 
-```env
-# Server
-PORT=3000
-NODE_ENV=development
+### Prerequisites
+- Node.js 18+
+- PostgreSQL 14+
+- Google Cloud project (for OAuth)
 
-# PostgreSQL
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=chat_collector
-DB_USER=postgres
-DB_PASSWORD=
-
-# Firebase Admin SDK
-FIREBASE_PROJECT_ID=
-FIREBASE_CLIENT_EMAIL=
-FIREBASE_PRIVATE_KEY=
-
-# Admin emails (comma-separated)
-ADMIN_EMAILS=admin@example.com
-```
-
-## 開發
-
-### 安裝 Backend
+### Backend Setup
 
 ```bash
 cd backend
 npm install
 cp .env.example .env
-# 編輯 .env 填入設定
+# Edit .env with your configuration
 npm run db:init
-npm run dev
+npm start
 ```
 
-### 載入 Extension
+### Environment Variables
 
-1. 開啟 `chrome://extensions`
-2. 啟用 Developer mode
-3. 點擊 "Load unpacked"
-4. 選擇 `chat-collector` 資料夾
+```env
+PORT=3456
+NODE_ENV=production
+DATABASE_URL=postgresql://user:pass@localhost:5432/promptutor
+GOOGLE_CLIENT_ID=your-google-oauth-client-id
+ADMIN_EMAILS=admin@example.com
+ANTHROPIC_API_KEY=your-key-for-detection
+```
 
-## 使用條款重點
+### Load Extension
 
-- 上傳的資料將**完全匿名化**處理
-- 只上傳使用者**選擇的聊天 session**
-- 資料僅用於**教育研究用途**
-- 使用者可以隨時**查看並刪除**所有資料
+1. Open `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked**
+4. Select the project root folder
 
-## 支援平台
+### Usage
 
-| 平台 | API 攔截 | DOM Fallback | 狀態 |
-|------|---------|--------------|------|
-| ChatGPT | ✅ | ✅ | 開發中 |
-| Claude | ✅ | ✅ | 開發中 |
-| Gemini | ❌ | ❌ | 計畫中 |
-| Perplexity | ❌ | ❌ | 計畫中 |
+1. Sign in via the extension popup (Google account)
+2. Accept terms of service
+3. Select mode:
+   - **Data Collection Only** — passively collects conversation data
+   - **Data Collection + Prompt Guidance** — also provides scaffolding intervention
+4. Toggle data sharing on/off per conversation
+5. Browse ChatGPT or Claude as usual
+
+## Supported Platforms
+
+| Platform | Data Collection | Prompt Guidance | Status |
+|----------|----------------|-----------------|--------|
+| ChatGPT  | ✅              | ✅               | Active |
+| Claude   | ✅              | ✅               | Active |
+| Gemini   | —              | —               | Planned |
+| Copilot  | —              | —               | Planned |
+
+## Privacy & Ethics
+
+- **Client-side anonymization**: Email addresses are SHA-256 hashed before leaving the browser
+- **Granular consent**: Students control data sharing at the conversation level
+- **Full transparency**: Students can view all collected data and delete it at any time
+- **Data minimization**: Only conversation content and timestamps are collected; no browser metadata
+- **DELICATE-compliant**: Follows the DELICATE ethical framework for learning analytics
+
+## Research
+
+PrompTutor was designed as a research tool for studying student-AI interactions in educational settings. If you use PrompTutor in your research, please cite:
+
+```
+PrompTutor: A Browser Extension for Data Collection and Real-Time
+Intervention in Student-Chatbot Interactions.
+L@S 2026 Work-in-Progress.
+```
 
 ## License
 

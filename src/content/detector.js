@@ -1,5 +1,5 @@
 // Answer-seeking detector
-// Intercepts chat submissions and checks with backend if mode is "guidance"
+// Triggered when user clicks the overlay in guidance mode
 
 (function() {
   'use strict';
@@ -9,7 +9,6 @@
   let userAnonId = null;
   let isProcessing = false;
 
-  // Load state
   chrome.storage.local.get(['mode', 'user', 'enabled'], (result) => {
     mode = result.mode || 'collect';
     userAnonId = result.user?.anonId || null;
@@ -20,14 +19,12 @@
     if (changes.user) userAnonId = changes.user.newValue?.anonId || null;
   });
 
-  // Detect platform
   function getPlatform() {
     if (location.hostname.includes('chatgpt') || location.hostname.includes('chat.openai')) return 'chatgpt';
     if (location.hostname.includes('claude')) return 'claude';
     return 'unknown';
   }
 
-  // Get the chat input element
   function getChatInput() {
     const platform = getPlatform();
     if (platform === 'chatgpt') {
@@ -43,14 +40,12 @@
     return null;
   }
 
-  // Get text from input element
   function getInputText(el) {
     if (!el) return '';
     if (el.tagName === 'TEXTAREA') return el.value;
     return el.innerText || el.textContent || '';
   }
 
-  // Set text in input element
   function setInputText(el, text) {
     if (!el) return;
     if (el.tagName === 'TEXTAREA') {
@@ -58,7 +53,6 @@
       el.dispatchEvent(new Event('input', { bubbles: true }));
       return;
     }
-    // contenteditable
     el.innerHTML = '';
     const p = document.createElement('p');
     p.textContent = text;
@@ -66,7 +60,6 @@
     el.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
-  // Call backend to detect answer-seeking
   async function detectAnswerSeeking(message) {
     try {
       const response = await fetch(`${API_ENDPOINT}/api/detect`, {
@@ -89,7 +82,6 @@
     }
   }
 
-  // Log guidance interaction
   async function logGuidance(data) {
     try {
       await fetch(`${API_ENDPOINT}/api/guidance-log`, {
@@ -109,158 +101,97 @@
     }
   }
 
-  // Intercept submission
-  async function handleSubmission(e) {
-    if (mode !== 'guidance' || isProcessing) return;
+  // Main function: analyze current input and show guidance
+  // Exposed globally so overlay.js can call it
+  // skipChecks: overlay already verified enabled + guidance mode
+  window.ccAnalyzeAndGuide = async function(skipChecks) {
+    console.log('[Chat Collector] ccAnalyzeAndGuide called, isProcessing:', isProcessing);
+    if (isProcessing) return;
+
+    if (!skipChecks) {
+      const stored = await chrome.storage.local.get(['enabled']);
+      if (!stored.enabled || mode !== 'guidance') {
+        console.log('[Chat Collector] Not enabled or not guidance mode');
+        return;
+      }
+    }
 
     const input = getChatInput();
+    console.log('[Chat Collector] Input element:', input?.tagName, input?.id);
     const text = getInputText(input).trim();
-    if (!text || text.length < 10) return; // Skip very short messages
+    console.log('[Chat Collector] Input text length:', text.length, 'text:', text.substring(0, 50));
 
-    // Check if enabled
-    const stored = await chrome.storage.local.get(['enabled']);
-    if (!stored.enabled) return;
+    if (!text || text.length < 5) {
+      if (typeof window.ccGuidanceShowChecking === 'function') {
+        window.ccGuidanceShowChecking('Type a prompt first');
+        setTimeout(() => {
+          if (typeof window.ccGuidanceHideChecking === 'function')
+            window.ccGuidanceHideChecking();
+        }, 2000);
+      }
+      return;
+    }
 
-    // Prevent the submission
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
     isProcessing = true;
 
-    // Show checking indicator
     if (typeof window.ccGuidanceShowChecking === 'function') {
       window.ccGuidanceShowChecking();
     }
 
-    try {
-      const result = await detectAnswerSeeking(text);
+    console.log('[Chat Collector] Calling detect API...');
+    const result = await detectAnswerSeeking(text);
+    console.log('[Chat Collector] Detect result:', result);
 
-      if (typeof window.ccGuidanceHideChecking === 'function') {
-        window.ccGuidanceHideChecking();
-      }
+    if (typeof window.ccGuidanceHideChecking === 'function') {
+      window.ccGuidanceHideChecking();
+    }
 
-      if (result && result.isAnswerSeeking && result.confidence > 0.6) {
-        // Show guidance overlay
-        if (typeof window.ccGuidanceShow === 'function') {
-          const choice = await window.ccGuidanceShow(text, result.suggestion, result.reason);
-
-          // Log the interaction
-          logGuidance({
-            originalMessage: text,
-            isAnswerSeeking: result.isAnswerSeeking,
-            confidence: result.confidence,
-            suggestion: result.suggestion,
-            userAction: choice.action,
-            finalMessage: choice.finalMessage
-          });
-
-          if (choice.action === 'accepted') {
-            // Replace text with suggestion and submit
-            setInputText(input, choice.finalMessage);
-            isProcessing = false;
-            // Trigger submit after a short delay
-            setTimeout(() => triggerSubmit(), 100);
-            return;
-          } else if (choice.action === 'edited') {
-            // Let user edit, don't submit
-            isProcessing = false;
-            return;
-          } else {
-            // dismissed - send original
-            isProcessing = false;
-            setTimeout(() => triggerSubmit(), 100);
-            return;
-          }
-        }
-      } else {
-        // Not answer-seeking or low confidence, let it through
-        if (result) {
-          logGuidance({
-            originalMessage: text,
-            isAnswerSeeking: result.isAnswerSeeking,
-            confidence: result.confidence,
-            suggestion: result.suggestion,
-            userAction: 'passed',
-            finalMessage: text
-          });
-        }
-        isProcessing = false;
-        setTimeout(() => triggerSubmit(), 50);
-        return;
-      }
-    } catch (err) {
-      console.error('[Chat Collector] Detection failed:', err);
-      if (typeof window.ccGuidanceHideChecking === 'function') {
-        window.ccGuidanceHideChecking();
-      }
+    if (!result) {
+      console.log('[Chat Collector] No result from API');
       isProcessing = false;
-      setTimeout(() => triggerSubmit(), 50);
+      return;
     }
-  }
 
-  // Trigger the actual submit
-  function triggerSubmit() {
-    const platform = getPlatform();
-    let submitBtn;
-    if (platform === 'chatgpt') {
-      submitBtn = document.querySelector('button[data-testid="send-button"]') ||
-                  document.querySelector('button[aria-label="Send prompt"]') ||
-                  document.querySelector('form button[type="submit"]');
-    } else if (platform === 'claude') {
-      submitBtn = document.querySelector('button[aria-label="Send Message"]') ||
-                  document.querySelector('button[aria-label="Send message"]') ||
-                  document.querySelector('fieldset button:last-of-type');
-    }
-    if (submitBtn) {
-      submitBtn.click();
-    }
-  }
+    if (result.isAnswerSeeking && result.confidence > 0.6) {
+      if (typeof window.ccGuidanceShow === 'function') {
+        const choice = await window.ccGuidanceShow(text, result.suggestion, result.reason);
 
-  // Hook into Enter key and submit button
-  function setupInterception() {
-    // Intercept Enter key on the input
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && mode === 'guidance' && !isProcessing) {
-        const input = getChatInput();
-        if (input && (input === document.activeElement || input.contains(document.activeElement))) {
-          const text = getInputText(input).trim();
-          if (text && text.length >= 10) {
-            handleSubmission(e);
-          }
+        logGuidance({
+          originalMessage: text,
+          isAnswerSeeking: result.isAnswerSeeking,
+          confidence: result.confidence,
+          suggestion: result.suggestion,
+          userAction: choice.action,
+          finalMessage: choice.finalMessage
+        });
+
+        if (choice.action === 'accepted') {
+          setInputText(input, choice.finalMessage);
         }
+        // 'edited' or 'dismissed' - leave as-is
       }
-    }, true); // capture phase
-
-    // Intercept submit button clicks
-    const observer = new MutationObserver(() => {
-      const platform = getPlatform();
-      let submitBtn;
-      if (platform === 'chatgpt') {
-        submitBtn = document.querySelector('button[data-testid="send-button"]') ||
-                    document.querySelector('button[aria-label="Send prompt"]');
-      } else if (platform === 'claude') {
-        submitBtn = document.querySelector('button[aria-label="Send Message"]') ||
-                    document.querySelector('button[aria-label="Send message"]');
+    } else {
+      // Not answer-seeking: show brief "looks good" feedback
+      if (typeof window.ccGuidanceShowChecking === 'function') {
+        window.ccGuidanceShowChecking('✅ Your prompt looks good!');
+        setTimeout(() => {
+          if (typeof window.ccGuidanceHideChecking === 'function')
+            window.ccGuidanceHideChecking();
+        }, 2000);
       }
-      if (submitBtn && !submitBtn._ccIntercepted) {
-        submitBtn._ccIntercepted = true;
-        submitBtn.addEventListener('click', (e) => {
-          if (mode === 'guidance' && !isProcessing) {
-            handleSubmission(e);
-          }
-        }, true);
-      }
-    });
 
-    observer.observe(document.body, { childList: true, subtree: true });
-  }
+      logGuidance({
+        originalMessage: text,
+        isAnswerSeeking: result.isAnswerSeeking,
+        confidence: result.confidence,
+        suggestion: result.suggestion,
+        userAction: 'passed',
+        finalMessage: text
+      });
+    }
 
-  // Initialize
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupInterception);
-  } else {
-    setupInterception();
-  }
+    isProcessing = false;
+  };
 
-  console.log('[Chat Collector] Detector loaded');
+  console.log('[Chat Collector] Detector loaded (click-to-analyze mode)');
 })();
