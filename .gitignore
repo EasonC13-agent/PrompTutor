@@ -2,10 +2,11 @@
 node_modules/
 backend/node_modules/
 
-# Environment
+# Environment (NEVER commit .env files with real credentials)
 .env
 .env.local
 .env.*.local
+backend/.env
 
 # Build
 dist/
