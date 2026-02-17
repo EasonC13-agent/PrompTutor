@@ -24,6 +24,12 @@
     if (location.hostname.includes('claude')) return 'claude';
     if (location.hostname.includes('grok.com') || (location.hostname.includes('x.com') && location.pathname.startsWith('/i/grok'))) return 'grok';
     if (location.hostname.includes('copilot.microsoft.com') || (location.hostname.includes('bing.com') && location.pathname.startsWith('/chat'))) return 'copilot';
+    if (location.hostname.includes('chat.deepseek.com')) return 'deepseek';
+    if (location.hostname.includes('doubao.com')) return 'doubao';
+    if (location.hostname.includes('gemini.google.com')) return 'gemini';
+    if (location.hostname.includes('perplexity.ai')) return 'perplexity';
+    if (location.hostname.includes('poe.com')) return 'poe';
+    if (location.hostname.includes('huggingface.co') && location.pathname.startsWith('/chat')) return 'huggingchat';
     return 'unknown';
   }
 
@@ -49,6 +55,37 @@
              document.querySelector('textarea[placeholder]') ||
              document.querySelector('[role="textbox"]') ||
              document.querySelector('div[contenteditable="true"]');
+    }
+    if (platform === 'deepseek') {
+      return document.querySelector('textarea[placeholder]') ||
+             document.querySelector('div[contenteditable="true"]') ||
+             document.querySelector('[role="textbox"]');
+    }
+    if (platform === 'doubao') {
+      return document.querySelector('textarea[placeholder]') ||
+             document.querySelector('div[contenteditable="true"]') ||
+             document.querySelector('[role="textbox"]');
+    }
+    if (platform === 'gemini') {
+      return document.querySelector('div[contenteditable="true"]') ||
+             document.querySelector('textarea[placeholder]') ||
+             document.querySelector('[role="textbox"]') ||
+             document.querySelector('.ql-editor');
+    }
+    if (platform === 'perplexity') {
+      return document.querySelector('textarea[placeholder]') ||
+             document.querySelector('div[contenteditable="true"]') ||
+             document.querySelector('[role="textbox"]');
+    }
+    if (platform === 'poe') {
+      return document.querySelector('textarea[placeholder]') ||
+             document.querySelector('div[contenteditable="true"]') ||
+             document.querySelector('[role="textbox"]');
+    }
+    if (platform === 'huggingchat') {
+      return document.querySelector('textarea[placeholder]') ||
+             document.querySelector('div[contenteditable="true"]') ||
+             document.querySelector('[role="textbox"]');
     }
     return null;
   }

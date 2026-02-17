@@ -50,6 +50,68 @@
     '/settings'
   ];
   
+  const DEEPSEEK_INCLUDE = [
+    '/api/v0/chat/',          // DeepSeek chat API
+    '/api/v0/chat/completion' // Chat completion
+  ];
+  
+  const DEEPSEEK_EXCLUDE = [
+    '/api/v0/chat/list',      // Chat list
+    '/settings'
+  ];
+  
+  const DOUBAO_INCLUDE = [
+    '/api/chat/',             // Doubao chat API
+    '/samantha/chat/'         // Doubao Samantha backend
+  ];
+  
+  const DOUBAO_EXCLUDE = [
+    '/api/chat/list',
+    '/settings'
+  ];
+  
+  const GEMINI_INCLUDE = [
+    '/_/BardChatUi/',         // Gemini/Bard RPC
+    '/api/generate',          // Generate API
+    '/conversation/'          // Conversation endpoint
+  ];
+  
+  const GEMINI_EXCLUDE = [
+    '/settings',
+    '/share'
+  ];
+  
+  const PERPLEXITY_INCLUDE = [
+    '/api/query',             // Perplexity query API
+    '/api/ask',               // Ask endpoint
+    '/socket.io/'             // WebSocket transport
+  ];
+  
+  const PERPLEXITY_EXCLUDE = [
+    '/api/auth/',
+    '/settings'
+  ];
+  
+  const POE_INCLUDE = [
+    '/api/gql_POST',          // Poe GraphQL
+    '/api/receive_POST'       // Poe message receive
+  ];
+  
+  const POE_EXCLUDE = [
+    '/api/settings',
+    '/settings'
+  ];
+  
+  const HUGGINGCHAT_INCLUDE = [
+    '/chat/conversation/',    // HuggingChat conversation
+    '/api/conversation/'      // HuggingChat API
+  ];
+  
+  const HUGGINGCHAT_EXCLUDE = [
+    '/api/conversations',     // Conversation list
+    '/settings'
+  ];
+  
   // Store original fetch BEFORE anything else runs
   const originalFetch = window.fetch;
   
@@ -65,7 +127,13 @@
     const isClaude = CLAUDE_INCLUDE.some(p => url.includes(p)) && !CLAUDE_EXCLUDE.some(p => url.includes(p));
     const isGrok = GROK_INCLUDE.some(p => url.includes(p)) && !GROK_EXCLUDE.some(p => url.includes(p));
     const isCopilot = COPILOT_INCLUDE.some(p => url.includes(p)) && !COPILOT_EXCLUDE.some(p => url.includes(p));
-    const isRelevant = isChatGPT || isClaude || isGrok || isCopilot;
+    const isDeepSeek = DEEPSEEK_INCLUDE.some(p => url.includes(p)) && !DEEPSEEK_EXCLUDE.some(p => url.includes(p));
+    const isDoubao = DOUBAO_INCLUDE.some(p => url.includes(p)) && !DOUBAO_EXCLUDE.some(p => url.includes(p));
+    const isGemini = GEMINI_INCLUDE.some(p => url.includes(p)) && !GEMINI_EXCLUDE.some(p => url.includes(p));
+    const isPerplexity = PERPLEXITY_INCLUDE.some(p => url.includes(p)) && !PERPLEXITY_EXCLUDE.some(p => url.includes(p));
+    const isPoe = POE_INCLUDE.some(p => url.includes(p)) && !POE_EXCLUDE.some(p => url.includes(p));
+    const isHuggingChat = HUGGINGCHAT_INCLUDE.some(p => url.includes(p)) && !HUGGINGCHAT_EXCLUDE.some(p => url.includes(p));
+    const isRelevant = isChatGPT || isClaude || isGrok || isCopilot || isDeepSeek || isDoubao || isGemini || isPerplexity || isPoe || isHuggingChat;
     
     if (isRelevant) {
       console.log('[Chat Collector] Intercepted:', url);
@@ -140,6 +208,12 @@
     if (url.includes('claude.ai')) return 'claude';
     if (url.includes('grok.com') || url.includes('x.com/i/grok')) return 'grok';
     if (url.includes('copilot.microsoft.com') || url.includes('bing.com/chat') || url.includes('bing.com/turing')) return 'copilot';
+    if (url.includes('chat.deepseek.com')) return 'deepseek';
+    if (url.includes('doubao.com')) return 'doubao';
+    if (url.includes('gemini.google.com')) return 'gemini';
+    if (url.includes('perplexity.ai')) return 'perplexity';
+    if (url.includes('poe.com')) return 'poe';
+    if (url.includes('huggingface.co/chat')) return 'huggingchat';
     return 'unknown';
   }
   

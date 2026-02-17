@@ -128,6 +128,193 @@
         '[class*="chat-container"]',
         '[class*="conversation-container"]'
       ]
+    },
+    deepseek: {
+      messageContainer: [
+        '[class*="message-item"]',
+        '[class*="chat-message"]',
+        '[data-role]',
+        '.ds-message'
+      ],
+      userMessage: [
+        '[data-role="user"]',
+        '[class*="user-message"]',
+        '[class*="human-message"]'
+      ],
+      assistantMessage: [
+        '[data-role="assistant"]',
+        '[class*="assistant-message"]',
+        '[class*="ai-message"]'
+      ],
+      messageContent: [
+        '.markdown',
+        '.ds-markdown',
+        '[class*="message-content"]',
+        '.prose',
+        'p'
+      ],
+      chatContainer: [
+        'main',
+        '[class*="chat-container"]',
+        '[class*="conversation"]',
+        '#chat-container'
+      ]
+    },
+    doubao: {
+      messageContainer: [
+        '[class*="message-item"]',
+        '[class*="chat-message"]',
+        '[class*="MessageItem"]',
+        '[data-role]'
+      ],
+      userMessage: [
+        '[data-role="user"]',
+        '[class*="user-message"]',
+        '[class*="UserMessage"]'
+      ],
+      assistantMessage: [
+        '[data-role="assistant"]',
+        '[class*="bot-message"]',
+        '[class*="AssistantMessage"]'
+      ],
+      messageContent: [
+        '.markdown',
+        '[class*="message-content"]',
+        '[class*="MessageContent"]',
+        '.prose',
+        'p'
+      ],
+      chatContainer: [
+        'main',
+        '[role="main"]',
+        '[class*="chat-container"]',
+        '[class*="conversation"]'
+      ]
+    },
+    gemini: {
+      messageContainer: [
+        '.conversation-container',
+        'message-content',
+        '[class*="message-row"]',
+        '[data-message-id]'
+      ],
+      userMessage: [
+        '.user-query',
+        '[class*="user-message"]',
+        '[data-role="user"]',
+        '.query-content'
+      ],
+      assistantMessage: [
+        '.model-response-text',
+        '.response-container',
+        '[class*="model-response"]',
+        '[data-role="model"]'
+      ],
+      messageContent: [
+        '.markdown',
+        '.model-response-text',
+        '.message-content',
+        '.prose',
+        'p'
+      ],
+      chatContainer: [
+        'main',
+        '[class*="chat-container"]',
+        '.conversation-container',
+        '[class*="conversation"]'
+      ]
+    },
+    perplexity: {
+      messageContainer: [
+        '[class*="message"]',
+        '[class*="ConversationMessage"]',
+        '[data-testid="message"]',
+        '.pb-md'
+      ],
+      userMessage: [
+        '[class*="user-message"]',
+        '[class*="UserMessage"]',
+        '[data-role="user"]'
+      ],
+      assistantMessage: [
+        '[class*="assistant-message"]',
+        '[class*="AssistantMessage"]',
+        '[data-role="assistant"]'
+      ],
+      messageContent: [
+        '.prose',
+        '.markdown',
+        '[class*="message-content"]',
+        '[class*="answer-text"]',
+        'p'
+      ],
+      chatContainer: [
+        'main',
+        '[role="main"]',
+        '[class*="conversation"]',
+        '[class*="chat-container"]'
+      ]
+    },
+    poe: {
+      messageContainer: [
+        '[class*="Message_row"]',
+        '[class*="message-row"]',
+        '[class*="ChatMessage"]',
+        '[data-message-id]'
+      ],
+      userMessage: [
+        '[class*="Message_humanMessage"]',
+        '[class*="human-message"]',
+        '[data-role="user"]'
+      ],
+      assistantMessage: [
+        '[class*="Message_botMessage"]',
+        '[class*="bot-message"]',
+        '[data-role="assistant"]'
+      ],
+      messageContent: [
+        '.markdown',
+        '.prose',
+        '[class*="Message_markdown"]',
+        '[class*="message-content"]',
+        'p'
+      ],
+      chatContainer: [
+        'main',
+        '[class*="ChatMessages"]',
+        '[class*="chat-container"]',
+        '[class*="conversation"]'
+      ]
+    },
+    huggingchat: {
+      messageContainer: [
+        '.message',
+        '[class*="message"]',
+        '[data-testid="message"]',
+        '.group'
+      ],
+      userMessage: [
+        '.message.user',
+        '[data-role="user"]',
+        '[class*="user-message"]'
+      ],
+      assistantMessage: [
+        '.message.assistant',
+        '[data-role="assistant"]',
+        '[class*="assistant-message"]'
+      ],
+      messageContent: [
+        '.prose',
+        '.markdown',
+        '[class*="message-content"]',
+        'p'
+      ],
+      chatContainer: [
+        'main',
+        '[class*="chat-container"]',
+        '[class*="conversation"]',
+        '.flex-col'
+      ]
     }
   };
   
@@ -149,6 +336,12 @@
     if (host.includes('claude.ai')) return 'claude';
     if (host.includes('grok.com') || (host.includes('x.com') && window.location.pathname.startsWith('/i/grok'))) return 'grok';
     if (host.includes('copilot.microsoft.com') || (host.includes('bing.com') && window.location.pathname.startsWith('/chat'))) return 'copilot';
+    if (host.includes('chat.deepseek.com')) return 'deepseek';
+    if (host.includes('doubao.com')) return 'doubao';
+    if (host.includes('gemini.google.com')) return 'gemini';
+    if (host.includes('perplexity.ai')) return 'perplexity';
+    if (host.includes('poe.com')) return 'poe';
+    if (host.includes('huggingface.co') && window.location.pathname.startsWith('/chat')) return 'huggingchat';
     return 'unknown';
   }
   
