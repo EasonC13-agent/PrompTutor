@@ -2,7 +2,7 @@
 
 // Config - will be replaced during build or set via storage
 const CONFIG = {
-  apiEndpoint: 'https://YOUR_SERVER_URL',
+  apiEndpoint: 'https://chat-collector.eason.phd',
 };
 
 // Hash email for anonymous ID

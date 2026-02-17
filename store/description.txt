@@ -1,0 +1,32 @@
+SHORT DESCRIPTION (132 chars max):
+Share your AI chat logs with researchers to help improve AI-assisted learning. Privacy-first, opt-in design.
+
+DETAILED DESCRIPTION:
+
+Chat Collector for Research helps advance educational research by allowing you to share your AI chatbot conversations with researchers at Carnegie Mellon University.
+
+HOW IT WORKS
+When you opt in, the extension collects your chat conversations from supported AI platforms and sends them (anonymized) to a secure research server. You stay in full control: toggle collection on or off anytime, view your data, and request deletion whenever you want.
+
+PRIVACY-FIRST DESIGN
+- Strictly opt-in: no data is collected until you enable it
+- All data is anonymized before storage
+- No browsing history, passwords, or personal files are ever accessed
+- Data is never sold or shared with third parties
+
+SUPPORTED PLATFORMS (10)
+ChatGPT, Claude, Grok, Gemini, DeepSeek, Copilot, Perplexity, Poe, Doubao, HuggingChat
+
+TWO MODES
+1. Data Collection Only: silently collects chat logs in the background when enabled
+2. Data Collection + Prompt Guidance: in addition to collection, provides research-backed prompt suggestions to help you get better results from AI chatbots
+
+WHO IS THIS FOR?
+- Students who use AI tools for learning and want to contribute to research
+- Educators interested in understanding how students interact with AI
+- Anyone who wants to support research on improving AI-assisted education
+
+PART OF CMU RESEARCH
+This extension is developed as part of an educational research project at Carnegie Mellon University. All data handling follows strict research ethics guidelines, and the study is subject to CMU IRB review.
+
+Questions? Contact eason@cmu.edu

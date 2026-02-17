@@ -3,7 +3,7 @@
 
 // Config
 const CONFIG = {
-  apiEndpoint: 'https://YOUR_SERVER_URL'
+  apiEndpoint: 'https://chat-collector.eason.phd'
 };
 
 // State

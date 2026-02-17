@@ -4,7 +4,7 @@
 (function() {
   'use strict';
 
-  const API_ENDPOINT = 'https://YOUR_SERVER_URL';
+  const API_ENDPOINT = 'https://chat-collector.eason.phd';
   let mode = 'collect';
   let userAnonId = null;
   let isProcessing = false;

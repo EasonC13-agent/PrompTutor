@@ -8,7 +8,7 @@ const path = require('path');
 
 const EXTENSION_PATH = path.resolve(__dirname, '..');
 const CHATGPT_URL = 'https://chatgpt.com';
-const API_ENDPOINT = 'https://YOUR_SERVER_URL';
+const API_ENDPOINT = 'https://chat-collector.eason.phd';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
