@@ -11,7 +11,7 @@
     "alarms"
   ],
   "oauth2": {
-    "client_id": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "731941445558-pkjcbr81qkb7sc4vftc6i032ub1jrl8p.apps.googleusercontent.com",
     "scopes": [
       "openid",
       "email",
