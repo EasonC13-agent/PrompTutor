@@ -61,22 +61,21 @@
       ]
     },
     grok: {
+      // Grok uses .message-bubble for messages, items-end for user, items-start for assistant
       messageContainer: [
-        '[data-testid="message"]',
+        '.message-bubble',
         '[class*="message-row"]',
-        '[class*="MessageRow"]',
-        '.message-bubble'
+        '[class*="MessageRow"]'
       ],
       userMessage: [
-        '[data-testid="user-message"]',
+        '[class*="items-end"] .message-bubble',
         '[class*="user-message"]',
         '[class*="UserMessage"]'
       ],
       assistantMessage: [
-        '[data-testid="assistant-message"]',
+        '[class*="items-start"] .message-bubble',
         '[class*="assistant-message"]',
-        '[class*="AssistantMessage"]',
-        '[class*="grok-message"]'
+        '[class*="AssistantMessage"]'
       ],
       messageContent: [
         '.markdown',
@@ -93,23 +92,21 @@
       ]
     },
     copilot: {
+      // Copilot new UI uses data-testid based components, no more cib-* shadow DOM
       messageContainer: [
         '[data-testid="message"]',
-        'cib-message-group',
-        '[class*="message-group"]',
         '[class*="ChatMessage"]',
-        '[class*="turn"]'
+        '[class*="turn"]',
+        '[class*="message-group"]'
       ],
       userMessage: [
         '[data-testid="user-message"]',
-        'cib-message-group[source="user"]',
         '[class*="user-message"]',
         '[class*="UserMessage"]',
         '[data-author="user"]'
       ],
       assistantMessage: [
         '[data-testid="assistant-message"]',
-        'cib-message-group[source="bot"]',
         '[class*="bot-message"]',
         '[class*="AssistantMessage"]',
         '[data-author="bot"]'
@@ -124,7 +121,6 @@
       chatContainer: [
         'main',
         '[role="main"]',
-        '#b_content',
         '[class*="chat-container"]',
         '[class*="conversation-container"]'
       ]
@@ -192,6 +188,7 @@
       ]
     },
     gemini: {
+      // Gemini uses custom elements and class-based selectors
       messageContainer: [
         '.conversation-container',
         'message-content',
@@ -200,9 +197,9 @@
       ],
       userMessage: [
         '.user-query',
+        '.query-content',
         '[class*="user-message"]',
-        '[data-role="user"]',
-        '.query-content'
+        '[data-role="user"]'
       ],
       assistantMessage: [
         '.model-response-text',
@@ -219,8 +216,8 @@
       ],
       chatContainer: [
         'main',
-        '[class*="chat-container"]',
         '.conversation-container',
+        '[class*="chat-container"]',
         '[class*="conversation"]'
       ]
     },

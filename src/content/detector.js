@@ -36,13 +36,17 @@
   function getChatInput() {
     const platform = getPlatform();
     if (platform === 'chatgpt') {
-      return document.querySelector('#prompt-textarea') ||
-             document.querySelector('textarea[data-id="root"]') ||
-             document.querySelector('div[contenteditable="true"][id="prompt-textarea"]');
+      // #prompt-textarea is a contenteditable DIV (ProseMirror), not a textarea
+      return document.querySelector('div#prompt-textarea[contenteditable="true"]') ||
+             document.querySelector('#prompt-textarea') ||
+             document.querySelector('div.ProseMirror[contenteditable="true"]') ||
+             document.querySelector('textarea[data-id="root"]');
     }
     if (platform === 'claude') {
-      return document.querySelector('div[contenteditable="true"].ProseMirror') ||
+      // Claude uses ProseMirror inside a fieldset, data-testid="chat-input" nearby
+      return document.querySelector('div.ProseMirror[contenteditable="true"]') ||
              document.querySelector('fieldset div[contenteditable="true"]') ||
+             document.querySelector('[data-testid="chat-input"] [contenteditable="true"]') ||
              document.querySelector('div[contenteditable="true"]');
     }
     if (platform === 'grok') {
@@ -51,10 +55,12 @@
              document.querySelector('[role="textbox"]');
     }
     if (platform === 'copilot') {
-      return document.querySelector('#searchbox') ||
+      // Copilot uses textarea#userInput, data-testid="composer-input"
+      return document.querySelector('textarea#userInput') ||
+             document.querySelector('[data-testid="composer-input"] textarea') ||
              document.querySelector('textarea[placeholder]') ||
              document.querySelector('[role="textbox"]') ||
-             document.querySelector('div[contenteditable="true"]');
+             document.querySelector('#searchbox');
     }
     if (platform === 'deepseek') {
       return document.querySelector('textarea[placeholder]') ||
@@ -62,20 +68,24 @@
              document.querySelector('[role="textbox"]');
     }
     if (platform === 'doubao') {
-      return document.querySelector('textarea[placeholder]') ||
+      // Doubao uses textarea with data-testid="chat_input"
+      return document.querySelector('[data-testid="chat_input"] textarea') ||
+             document.querySelector('textarea[placeholder]') ||
              document.querySelector('div[contenteditable="true"]') ||
              document.querySelector('[role="textbox"]');
     }
     if (platform === 'gemini') {
-      return document.querySelector('div[contenteditable="true"]') ||
-             document.querySelector('textarea[placeholder]') ||
-             document.querySelector('[role="textbox"]') ||
+      // Gemini uses .ql-editor (Quill) inside rich-textarea, contenteditable
+      return document.querySelector('.ql-editor[contenteditable="true"]') ||
+             document.querySelector('rich-textarea [contenteditable="true"]') ||
+             document.querySelector('div[contenteditable="true"]') ||
              document.querySelector('.ql-editor');
     }
     if (platform === 'perplexity') {
-      return document.querySelector('textarea[placeholder]') ||
-             document.querySelector('div[contenteditable="true"]') ||
-             document.querySelector('[role="textbox"]');
+      // Perplexity uses contenteditable, no textarea
+      return document.querySelector('div[contenteditable="true"]') ||
+             document.querySelector('[role="textbox"]') ||
+             document.querySelector('textarea[placeholder]');
     }
     if (platform === 'poe') {
       return document.querySelector('textarea[placeholder]') ||

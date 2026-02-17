@@ -121,8 +121,8 @@ if (JSDOM) {
               <div data-message-author-role="assistant"><div class="markdown">Hi there</div></div>`,
     claude: `<div data-testid="user-message"><div class="prose">Hello</div></div>
              <div data-testid="assistant-message"><div class="prose">Hi there</div></div>`,
-    grok: `<div data-testid="message"><div data-testid="user-message"><div class="markdown">Hello</div></div></div>
-           <div data-testid="message"><div data-testid="assistant-message"><div class="markdown">Hi there</div></div></div>`,
+    grok: `<div class="items-end"><div class="message-bubble"><div class="markdown">Hello</div></div></div>
+           <div class="items-start"><div class="message-bubble"><div class="markdown">Hi there</div></div></div>`,
     copilot: `<div data-testid="message"><div data-testid="user-message"><div class="markdown">Hello</div></div></div>
               <div data-testid="message"><div data-testid="assistant-message"><div class="markdown">Hi there</div></div></div>`,
     deepseek: `<div data-role="user" class="ds-message"><div class="ds-markdown">Hello</div></div>
