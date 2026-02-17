@@ -23,7 +23,7 @@ const checkUrlChange = () => {
       chrome.runtime.sendMessage({ type: 'CONVERSATION_OPENED', url: lastUrl });
     } catch (e) {}
     
-    console.log('[Chat Collector] URL changed:', oldUrl, '->', lastUrl);
+    console.log('[PrompTutor] URL changed:', oldUrl, '->', lastUrl);
   }
 };
 
@@ -53,8 +53,8 @@ window.addEventListener('beforeunload', () => {
 // Listen for messages from MAIN world (interceptor)
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
-  if (event.data?.type === 'CHAT_COLLECTOR_DATA') {
-    console.log('[Chat Collector] Forwarding to background:', event.data.payload.url);
+  if (event.data?.type === 'PROMPTUTOR_DATA') {
+    console.log('[PrompTutor] Forwarding to background:', event.data.payload.url);
     try {
       chrome.runtime.sendMessage({
         type: 'CHAT_DATA',
@@ -64,4 +64,4 @@ window.addEventListener('message', (event) => {
   }
 });
 
-console.log('[Chat Collector] Bridge loaded (isolated world)');
+console.log('[PrompTutor] Bridge loaded (isolated world)');

@@ -5,7 +5,7 @@
 // GET /api/organizations/{org}/chat_conversations/{id}
 // POST /api/organizations/{org}/chat_conversations/{id}/completion
 
-console.log('[Chat Collector] Claude adapter loaded');
+console.log('[PrompTutor] Claude adapter loaded');
 
 // DOM selectors (for fallback mode)
 const SELECTORS = {

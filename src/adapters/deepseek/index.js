@@ -2,7 +2,7 @@
 // Real DOM tested: .ds-message for all messages
 // Assistant messages have .ds-markdown child, user messages do NOT
 
-console.log('[Chat Collector] DeepSeek adapter loaded');
+console.log('[PrompTutor] DeepSeek adapter loaded');
 
 const SELECTORS = {
   messageContainer: '.ds-message',

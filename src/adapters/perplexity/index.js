@@ -3,7 +3,7 @@
 // Assistant answers are .prose elements
 // Container elements have class containing "threadContentWidth"
 
-console.log('[Chat Collector] Perplexity adapter loaded');
+console.log('[PrompTutor] Perplexity adapter loaded');
 
 const SELECTORS = {
   messageContainer: '[class*="threadContentWidth"]',

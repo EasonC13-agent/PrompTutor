@@ -1,6 +1,6 @@
 // Doubao (豆包)-specific adapter
 
-console.log('[Chat Collector] Doubao adapter loaded');
+console.log('[PrompTutor] Doubao adapter loaded');
 
 const SELECTORS = {
   messageContainer: '[class*="message-item"], [class*="chat-message"], [class*="MessageItem"], [data-role]',

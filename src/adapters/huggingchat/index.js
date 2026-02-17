@@ -1,6 +1,6 @@
 // HuggingChat-specific adapter
 
-console.log('[Chat Collector] HuggingChat adapter loaded');
+console.log('[PrompTutor] HuggingChat adapter loaded');
 
 const SELECTORS = {
   messageContainer: '.message, [class*="message"], [data-testid="message"], .group',

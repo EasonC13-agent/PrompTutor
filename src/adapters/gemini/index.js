@@ -1,6 +1,6 @@
 // Google Gemini-specific adapter
 
-console.log('[Chat Collector] Gemini adapter loaded');
+console.log('[PrompTutor] Gemini adapter loaded');
 
 const SELECTORS = {
   messageContainer: '.conversation-container, message-content, [class*="message-row"], [data-message-id]',

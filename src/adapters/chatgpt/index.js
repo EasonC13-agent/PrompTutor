@@ -8,7 +8,7 @@
 
 // TODO: Add DOM fallback parser for when API interception fails
 
-console.log('[Chat Collector] ChatGPT adapter loaded');
+console.log('[PrompTutor] ChatGPT adapter loaded');
 
 // DOM selectors (for fallback mode)
 const SELECTORS = {

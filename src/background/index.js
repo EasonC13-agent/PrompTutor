@@ -18,7 +18,7 @@ chrome.storage.local.get(['enabled', 'user', 'conversationCache', 'apiEndpoint']
   userAnonId = result.user?.anonId ?? null;
   conversationCache = result.conversationCache ?? {};
   if (result.apiEndpoint) CONFIG.apiEndpoint = result.apiEndpoint;
-  console.log('[Chat Collector] Background loaded, enabled:', isEnabled, 'anonId:', userAnonId?.slice(0,8));
+  console.log('[PrompTutor] Background loaded, enabled:', isEnabled, 'anonId:', userAnonId?.slice(0,8));
 });
 
 // Listen for storage changes
@@ -43,7 +43,7 @@ chrome.storage.onChanged.addListener((changes) => {
 
 // Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[Chat Collector BG] Received message:', message.type);
+  console.log('[PrompTutor BG] Received message:', message.type);
   
   switch (message.type) {
     case 'CHAT_DATA':
@@ -79,18 +79,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Handle incoming chat data
 function handleChatData(payload, tabUrl) {
-  console.log('[Chat Collector BG] handleChatData called, isEnabled:', isEnabled, 'userAnonId:', userAnonId?.slice(0,8));
+  console.log('[PrompTutor BG] handleChatData called, isEnabled:', isEnabled, 'userAnonId:', userAnonId?.slice(0,8));
   
   const url = payload.url || tabUrl;
   if (!url) {
-    console.log('[Chat Collector BG] No URL, skipping');
+    console.log('[PrompTutor BG] No URL, skipping');
     return;
   }
   
   // Extract conversation base URL (e.g., https://chatgpt.com/c/abc123)
   const conversationUrl = getConversationUrl(url);
   
-  console.log('[Chat Collector BG] Captured:', payload.platform, conversationUrl);
+  console.log('[PrompTutor BG] Captured:', payload.platform, conversationUrl);
   
   // Cache the data
   if (!conversationCache[conversationUrl]) {
@@ -118,7 +118,7 @@ function handleChatData(payload, tabUrl) {
 function handleConversationOpened(url) {
   const conversationUrl = getConversationUrl(url);
   activeConversations.add(conversationUrl);
-  console.log('[Chat Collector] Conversation opened:', conversationUrl);
+  console.log('[PrompTutor] Conversation opened:', conversationUrl);
   
   // If enabled and we have cached data, sync it
   if (isEnabled && userAnonId && conversationCache[conversationUrl]?.data?.length > 0) {
@@ -130,7 +130,7 @@ function handleConversationOpened(url) {
 async function handleConversationClosed(url) {
   const conversationUrl = getConversationUrl(url);
   activeConversations.delete(conversationUrl);
-  console.log('[Chat Collector] Conversation closed:', conversationUrl);
+  console.log('[PrompTutor] Conversation closed:', conversationUrl);
   
   // If toggle is OFF, delete this conversation's data from server
   if (!isEnabled && userAnonId) {
@@ -140,7 +140,7 @@ async function handleConversationClosed(url) {
 
 // Delete data for all active conversations (when toggle turned OFF)
 async function deleteActiveConversations() {
-  console.log('[Chat Collector] Deleting active conversations data...');
+  console.log('[PrompTutor] Deleting active conversations data...');
   
   for (const url of activeConversations) {
     await deleteConversation(url);
@@ -155,7 +155,7 @@ async function deleteActiveConversations() {
 
 // Sync data for all active conversations (when toggle turned ON)
 async function syncActiveConversations() {
-  console.log('[Chat Collector] Syncing active conversations...');
+  console.log('[PrompTutor] Syncing active conversations...');
   
   for (const url of activeConversations) {
     if (conversationCache[url]?.data?.length > 0) {
@@ -180,17 +180,17 @@ async function syncConversation(conversationUrl) {
     });
     
     if (response.ok) {
-      console.log('[Chat Collector] Synced', cache.data.length, 'items for', conversationUrl);
+      console.log('[PrompTutor] Synced', cache.data.length, 'items for', conversationUrl);
       // Clear synced data
       conversationCache[conversationUrl].data = [];
       chrome.storage.local.set({ conversationCache });
       return { success: true, synced: cache.data.length };
     } else {
-      console.error('[Chat Collector] Sync failed:', response.status);
+      console.error('[PrompTutor] Sync failed:', response.status);
       return { success: false, error: `HTTP ${response.status}` };
     }
   } catch (e) {
-    console.error('[Chat Collector] Sync error:', e);
+    console.error('[PrompTutor] Sync error:', e);
     return { success: false, error: e.message };
   }
 }
@@ -211,12 +211,12 @@ async function deleteConversation(conversationUrl) {
     
     if (response.ok) {
       const result = await response.json();
-      console.log('[Chat Collector] Deleted', result.deleted, 'items for', conversationUrl);
+      console.log('[PrompTutor] Deleted', result.deleted, 'items for', conversationUrl);
     } else {
-      console.error('[Chat Collector] Delete failed:', response.status);
+      console.error('[PrompTutor] Delete failed:', response.status);
     }
   } catch (e) {
-    console.error('[Chat Collector] Delete error:', e);
+    console.error('[PrompTutor] Delete error:', e);
   }
 }
 
@@ -250,14 +250,14 @@ async function syncAllCachedData() {
         conversationCache[url].data = [];
       }
       chrome.storage.local.set({ conversationCache });
-      console.log('[Chat Collector] Synced', allData.length, 'items');
+      console.log('[PrompTutor] Synced', allData.length, 'items');
       return { success: true, synced: allData.length };
     } else {
-      console.error('[Chat Collector] Sync failed:', response.status);
+      console.error('[PrompTutor] Sync failed:', response.status);
       return { success: false, error: `HTTP ${response.status}` };
     }
   } catch (e) {
-    console.error('[Chat Collector] Sync error:', e);
+    console.error('[PrompTutor] Sync error:', e);
     return { success: false, error: e.message };
   }
 }
@@ -288,8 +288,8 @@ setTimeout(() => {
         syncAllCachedData();
       }
     });
-    console.log('[Chat Collector] Alarms set up');
+    console.log('[PrompTutor] Alarms set up');
   } catch (e) {
-    console.log('[Chat Collector] Alarms not available:', e.message);
+    console.log('[PrompTutor] Alarms not available:', e.message);
   }
 }, 100);

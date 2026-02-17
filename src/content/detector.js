@@ -141,7 +141,7 @@
       if (!response.ok) return null;
       return await response.json();
     } catch (e) {
-      console.error('[Chat Collector] Detection error:', e);
+      console.error('[PrompTutor] Detection error:', e);
       return null;
     }
   }
@@ -161,7 +161,7 @@
         })
       });
     } catch (e) {
-      console.error('[Chat Collector] Guidance log error:', e);
+      console.error('[PrompTutor] Guidance log error:', e);
     }
   }
 
@@ -169,21 +169,21 @@
   // Exposed globally so overlay.js can call it
   // skipChecks: overlay already verified enabled + guidance mode
   window.ccAnalyzeAndGuide = async function(skipChecks) {
-    console.log('[Chat Collector] ccAnalyzeAndGuide called, isProcessing:', isProcessing);
+    console.log('[PrompTutor] ccAnalyzeAndGuide called, isProcessing:', isProcessing);
     if (isProcessing) return;
 
     if (!skipChecks) {
       const stored = await chrome.storage.local.get(['enabled']);
       if (!stored.enabled || mode !== 'guidance') {
-        console.log('[Chat Collector] Not enabled or not guidance mode');
+        console.log('[PrompTutor] Not enabled or not guidance mode');
         return;
       }
     }
 
     const input = getChatInput();
-    console.log('[Chat Collector] Input element:', input?.tagName, input?.id);
+    console.log('[PrompTutor] Input element:', input?.tagName, input?.id);
     const text = getInputText(input).trim();
-    console.log('[Chat Collector] Input text length:', text.length, 'text:', text.substring(0, 50));
+    console.log('[PrompTutor] Input text length:', text.length, 'text:', text.substring(0, 50));
 
     if (!text || text.length < 5) {
       if (typeof window.ccGuidanceShowChecking === 'function') {
@@ -202,16 +202,16 @@
       window.ccGuidanceShowChecking();
     }
 
-    console.log('[Chat Collector] Calling detect API...');
+    console.log('[PrompTutor] Calling detect API...');
     const result = await detectAnswerSeeking(text);
-    console.log('[Chat Collector] Detect result:', result);
+    console.log('[PrompTutor] Detect result:', result);
 
     if (typeof window.ccGuidanceHideChecking === 'function') {
       window.ccGuidanceHideChecking();
     }
 
     if (!result) {
-      console.log('[Chat Collector] No result from API');
+      console.log('[PrompTutor] No result from API');
       isProcessing = false;
       return;
     }
@@ -257,5 +257,5 @@
     isProcessing = false;
   };
 
-  console.log('[Chat Collector] Detector loaded (click-to-analyze mode)');
+  console.log('[PrompTutor] Detector loaded (click-to-analyze mode)');
 })();

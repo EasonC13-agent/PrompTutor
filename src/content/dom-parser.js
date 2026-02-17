@@ -481,7 +481,7 @@
     // Mark as seen
     newMessages.forEach(m => seenMessages.add(m.hash));
     
-    console.log('[Chat Collector DOM] Detected', newMessages.length, 'new messages');
+    console.log('[PrompTutor DOM] Detected', newMessages.length, 'new messages');
     
     // Send to extension
     sendToExtension({
@@ -502,7 +502,7 @@
   function sendToExtension(payload) {
     // Check if extension context is still valid
     if (!chrome?.runtime?.id) {
-      console.log('[Chat Collector DOM] Extension context invalid, skipping send');
+      console.log('[PrompTutor DOM] Extension context invalid, skipping send');
       return;
     }
     
@@ -526,7 +526,7 @@
     } catch (e) {
       // Silently ignore extension context errors
       if (!e.message?.includes('Extension context invalidated')) {
-        console.error('[Chat Collector DOM] Failed to send:', e);
+        console.error('[PrompTutor DOM] Failed to send:', e);
       }
     }
   }
@@ -538,7 +538,7 @@
     
     const container = $(sel.chatContainer);
     if (!container) {
-      console.log('[Chat Collector DOM] Chat container not found, retrying...');
+      console.log('[PrompTutor DOM] Chat container not found, retrying...');
       setTimeout(setupObserver, 1000);
       return;
     }
@@ -569,7 +569,7 @@
       characterData: true
     });
     
-    console.log('[Chat Collector DOM] Observer attached to', container.tagName);
+    console.log('[PrompTutor DOM] Observer attached to', container.tagName);
   }
   
   // Periodic scan as backup
@@ -583,7 +583,7 @@
   
   // Initialize
   function init() {
-    console.log('[Chat Collector DOM] Initializing for', platform);
+    console.log('[PrompTutor DOM] Initializing for', platform);
     
     // Initial scan
     setTimeout(() => {
@@ -596,7 +596,7 @@
     let lastUrl = window.location.href;
     setInterval(() => {
       if (window.location.href !== lastUrl) {
-        console.log('[Chat Collector DOM] URL changed, reinitializing');
+        console.log('[PrompTutor DOM] URL changed, reinitializing');
         lastUrl = window.location.href;
         seenMessages.clear();
         lastSnapshot = null;
@@ -616,5 +616,5 @@
     init();
   }
   
-  console.log('[Chat Collector DOM] Parser loaded for', platform);
+  console.log('[PrompTutor DOM] Parser loaded for', platform);
 })();

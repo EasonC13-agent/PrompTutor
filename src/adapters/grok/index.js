@@ -5,7 +5,7 @@
 // POST /api/rpc - Grok RPC calls
 // POST /api/2/grok/ - Grok conversation API
 
-console.log('[Chat Collector] Grok adapter loaded');
+console.log('[PrompTutor] Grok adapter loaded');
 
 // DOM selectors (for fallback mode)
 const SELECTORS = {

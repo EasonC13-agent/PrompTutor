@@ -3,7 +3,7 @@ Share your AI chat logs with researchers to help improve AI-assisted learning. P
 
 DETAILED DESCRIPTION:
 
-Chat Collector for Research helps advance educational research by allowing you to share your AI chatbot conversations with researchers at Carnegie Mellon University.
+PrompTutor helps advance educational research by allowing you to share your AI chatbot conversations with researchers at Carnegie Mellon University.
 
 HOW IT WORKS
 When you opt in, the extension collects your chat conversations from supported AI platforms and sends them (anonymized) to a secure research server. You stay in full control: toggle collection on or off anytime, view your data, and request deletion whenever you want.

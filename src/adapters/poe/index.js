@@ -6,7 +6,7 @@
 // Content: [class*="messageTextContainer"]
 // data-complete="true" when done streaming
 
-console.log('[Chat Collector] Poe adapter loaded');
+console.log('[PrompTutor] Poe adapter loaded');
 
 const SELECTORS = {
   messageContainer: '[class*="ChatMessage_chatMessage"]',

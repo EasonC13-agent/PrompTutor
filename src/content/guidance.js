@@ -183,5 +183,5 @@
     });
   };
 
-  console.log('[Chat Collector] Guidance UI loaded');
+  console.log('[PrompTutor] Guidance UI loaded');
 })();

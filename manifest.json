@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Chat Collector for Research",
+  "name": "PrompTutor",
   "version": "0.1.0",
   "description": "Optionally share your AI chat logs with researchers for educational research.",
   "permissions": [

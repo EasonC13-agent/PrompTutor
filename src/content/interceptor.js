@@ -136,7 +136,7 @@
     const isRelevant = isChatGPT || isClaude || isGrok || isCopilot || isDeepSeek || isDoubao || isGemini || isPerplexity || isPoe || isHuggingChat;
     
     if (isRelevant) {
-      console.log('[Chat Collector] Intercepted:', url);
+      console.log('[PrompTutor] Intercepted:', url);
       try {
         const clone = response.clone();
         const contentType = clone.headers.get('content-type') || '';
@@ -152,10 +152,10 @@
               data,
               platform: detectPlatform(url)
             });
-          }).catch(e => console.debug('[Chat Collector] JSON parse error:', e));
+          }).catch(e => console.debug('[PrompTutor] JSON parse error:', e));
         }
       } catch (e) {
-        console.debug('[Chat Collector] Intercept error:', e);
+        console.debug('[PrompTutor] Intercept error:', e);
       }
     }
     
@@ -199,7 +199,7 @@
         });
       }
     } catch (e) {
-      console.debug('[Chat Collector] Stream read error:', e);
+      console.debug('[PrompTutor] Stream read error:', e);
     }
   }
   
@@ -218,9 +218,9 @@
   }
   
   function sendToExtension(payload) {
-    console.log('[Chat Collector] Sending to extension:', payload.url);
-    window.postMessage({ type: 'CHAT_COLLECTOR_DATA', payload }, '*');
+    console.log('[PrompTutor] Sending to extension:', payload.url);
+    window.postMessage({ type: 'PROMPTUTOR_DATA', payload }, '*');
   }
   
-  console.log('[Chat Collector] API interceptor active (MAIN world)');
+  console.log('[PrompTutor] API interceptor active (MAIN world)');
 })();

@@ -5,21 +5,21 @@
   'use strict';
   
   // Avoid duplicate injection
-  if (document.getElementById('chat-collector-overlay')) return;
+  if (document.getElementById('promptutor-overlay')) return;
   
   // Create overlay container
   const overlay = document.createElement('div');
-  overlay.id = 'chat-collector-overlay';
+  overlay.id = 'promptutor-overlay';
   overlay.innerHTML = `
     <style>
-      #chat-collector-overlay {
+      #promptutor-overlay {
         position: fixed;
         bottom: 80px;
         right: 20px;
         z-index: 10000;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
-      #chat-collector-toggle {
+      #promptutor-toggle {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -32,14 +32,14 @@
         transition: all 0.2s;
         font-size: 13px;
       }
-      #chat-collector-toggle:hover {
+      #promptutor-toggle:hover {
         box-shadow: 0 4px 12px rgba(0,0,0,0.2);
       }
-      #chat-collector-toggle.collecting {
+      #promptutor-toggle.collecting {
         background: #e8f5e9;
         border-color: #4caf50;
       }
-      #chat-collector-toggle.not-logged-in {
+      #promptutor-toggle.not-logged-in {
         background: #fff3e0;
         border-color: #ff9800;
       }
@@ -122,18 +122,18 @@
         line-height: 1;
         display: none;
       }
-      #chat-collector-toggle:hover .cc-minimize {
+      #promptutor-toggle:hover .cc-minimize {
         display: block;
       }
-      #chat-collector-overlay.minimized #chat-collector-toggle {
+      #promptutor-overlay.minimized #promptutor-toggle {
         padding: 6px 10px;
       }
-      #chat-collector-overlay.minimized .cc-label,
-      #chat-collector-overlay.minimized .cc-switch {
+      #promptutor-overlay.minimized .cc-label,
+      #promptutor-overlay.minimized .cc-switch {
         display: none;
       }
     </style>
-    <div id="chat-collector-toggle">
+    <div id="promptutor-toggle">
       <button class="cc-minimize" title="Minimize">−</button>
       <span class="cc-indicator"></span>
       <span class="cc-label">Share Data</span>
@@ -147,7 +147,7 @@
   document.body.appendChild(overlay);
   
   // Elements
-  const toggle = document.getElementById('chat-collector-toggle');
+  const toggle = document.getElementById('promptutor-toggle');
   const indicator = toggle.querySelector('.cc-indicator');
   const label = toggle.querySelector('.cc-label');
   const checkbox = document.getElementById('cc-enabled');
@@ -191,7 +191,7 @@
       e.preventDefault();
       checkbox.checked = false;
       // Open extension popup
-      alert('Please sign in to Chat Collector first by clicking the extension icon.');
+      alert('Please sign in to PrompTutor first by clicking the extension icon.');
       return;
     }
     
@@ -205,7 +205,7 @@
   label.addEventListener('click', async (e) => {
     e.stopPropagation();
     if (!isLoggedIn) {
-      alert('Please sign in to Chat Collector first by clicking the extension icon in your browser toolbar.');
+      alert('Please sign in to PrompTutor first by clicking the extension icon in your browser toolbar.');
       return;
     }
     if (!isEnabled || currentMode !== 'guidance') return;
@@ -221,7 +221,7 @@
   // Click on overlay when not logged in
   toggle.addEventListener('click', (e) => {
     if (!isLoggedIn && e.target !== checkbox) {
-      alert('Please sign in to Chat Collector first by clicking the extension icon in your browser toolbar.');
+      alert('Please sign in to PrompTutor first by clicking the extension icon in your browser toolbar.');
     }
   });
   
@@ -250,5 +250,5 @@
   // Initial load
   loadState();
   
-  console.log('[Chat Collector] Overlay injected');
+  console.log('[PrompTutor] Overlay injected');
 })();

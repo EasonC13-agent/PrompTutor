@@ -6,7 +6,7 @@
 // POST /sydney/ - Sydney backend
 // POST /c/api/conversations - Copilot conversations API
 
-console.log('[Chat Collector] Copilot adapter loaded');
+console.log('[PrompTutor] Copilot adapter loaded');
 
 // DOM selectors (for fallback mode)
 const SELECTORS = {
