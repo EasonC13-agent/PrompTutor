@@ -29,4 +29,4 @@ WHO IS THIS FOR?
 PART OF CMU RESEARCH
 This extension is developed as part of an educational research project at Carnegie Mellon University. All data handling follows strict research ethics guidelines, and the study is subject to CMU IRB review.
 
-Questions? Contact eason@cmu.edu
+Questions? Contact EasonC13@cmu.edu

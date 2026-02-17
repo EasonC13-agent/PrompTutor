@@ -29,4 +29,4 @@ ChatGPT、Claude、Grok、Gemini、DeepSeek、Copilot、Perplexity、Poe、Douba
 CMU 研究計畫
 本擴充功能為卡內基美隆大學教育研究計畫的一部分。所有資料處理遵循嚴格的研究倫理規範，研究受 CMU IRB 審查。
 
-問題請聯繫 eason@cmu.edu
+問題請聯繫 EasonC13@cmu.edu
