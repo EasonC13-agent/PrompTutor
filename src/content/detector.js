@@ -43,11 +43,11 @@
              document.querySelector('textarea[data-id="root"]');
     }
     if (platform === 'claude') {
-      // Claude uses ProseMirror inside a fieldset, data-testid="chat-input" nearby
-      return document.querySelector('div.ProseMirror[contenteditable="true"]') ||
+      // Claude uses ProseMirror (tiptap) contenteditable div
+      return document.querySelector('div.tiptap.ProseMirror[contenteditable="true"]') ||
+             document.querySelector('div.ProseMirror[contenteditable="true"]') ||
              document.querySelector('fieldset div[contenteditable="true"]') ||
-             document.querySelector('[data-testid="chat-input"] [contenteditable="true"]') ||
-             document.querySelector('div[contenteditable="true"]');
+             document.querySelector('[data-testid="chat-input"] [contenteditable="true"]');
     }
     if (platform === 'grok') {
       return document.querySelector('textarea[placeholder]') ||
@@ -82,10 +82,11 @@
              document.querySelector('.ql-editor');
     }
     if (platform === 'perplexity') {
-      // Perplexity uses contenteditable, no textarea
-      return document.querySelector('div[contenteditable="true"]') ||
-             document.querySelector('[role="textbox"]') ||
-             document.querySelector('textarea[placeholder]');
+      // Perplexity uses div#ask-input contenteditable
+      return document.querySelector('div#ask-input[contenteditable="true"]') ||
+             document.querySelector('div#ask-input') ||
+             document.querySelector('div[contenteditable="true"]') ||
+             document.querySelector('[role="textbox"]');
     }
     if (platform === 'poe') {
       return document.querySelector('textarea[placeholder]') ||

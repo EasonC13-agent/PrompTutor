@@ -38,9 +38,10 @@
     },
     claude: {
       messageContainer: [
+        '[data-test-render-count]',
         '[data-testid="user-message"]',
         '[data-testid="assistant-message"]',
-        '.font-claude-message'
+        '.font-claude-response'
       ],
       userMessage: [
         '[data-testid="user-message"]',
@@ -48,9 +49,11 @@
       ],
       assistantMessage: [
         '[data-testid="assistant-message"]', 
-        '.font-claude-message'
+        '.font-claude-response'
       ],
       messageContent: [
+        '.font-claude-response-body',
+        '.font-user-message',
         '.prose',
         '.markdown',
         'p'
@@ -61,7 +64,8 @@
       ]
     },
     grok: {
-      // Grok uses .message-bubble for messages, items-end for user, items-start for assistant
+      // Grok uses .message-bubble for messages
+      // User vs assistant distinguished by parent: items-end (user) vs items-start (assistant)
       messageContainer: [
         '.message-bubble',
         '[class*="message-row"]',
@@ -69,19 +73,19 @@
       ],
       userMessage: [
         '[class*="items-end"] .message-bubble',
-        '[class*="user-message"]',
-        '[class*="UserMessage"]'
+        '[class*="items-end"] > .message-bubble',
+        '[class*="user-message"]'
       ],
       assistantMessage: [
         '[class*="items-start"] .message-bubble',
-        '[class*="assistant-message"]',
-        '[class*="AssistantMessage"]'
+        '[class*="items-start"] > .message-bubble',
+        '[class*="assistant-message"]'
       ],
       messageContent: [
+        '.response-content-markdown',
         '.markdown',
         '.prose',
         '[class*="message-content"]',
-        '[class*="MessageContent"]',
         'p'
       ],
       chatContainer: [
@@ -188,29 +192,30 @@
       ]
     },
     gemini: {
-      // Gemini uses custom elements and class-based selectors
+      // Gemini uses .message-container, user-query-container, model-response-text
       messageContainer: [
+        '.message-container',
         '.conversation-container',
-        'message-content',
-        '[class*="message-row"]',
-        '[data-message-id]'
+        '[data-message-id]',
+        '[class*="message-row"]'
       ],
       userMessage: [
+        '.user-query-container',
         '.user-query',
         '.query-content',
-        '[class*="user-message"]',
         '[data-role="user"]'
       ],
       assistantMessage: [
-        '.model-response-text',
         '.response-container',
+        '.model-response-text',
         '[class*="model-response"]',
         '[data-role="model"]'
       ],
       messageContent: [
-        '.markdown',
+        '.query-text',
         '.model-response-text',
-        '.message-content',
+        '.response-content',
+        '.markdown',
         '.prose',
         'p'
       ],

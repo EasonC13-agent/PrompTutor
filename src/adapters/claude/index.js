@@ -11,7 +11,8 @@ console.log('[Chat Collector] Claude adapter loaded');
 const SELECTORS = {
   messageContainer: '[data-test-render-count]',
   humanMessage: '.font-user-message',
-  assistantMessage: '.font-claude-message',
+  assistantMessage: '.font-claude-response',
+  assistantContent: '.font-claude-response-body',
   conversationList: '[data-testid="conversation-list"]'
 };
 
@@ -34,9 +35,10 @@ window.ClaudeAdapter = {
           content: isHuman.textContent || '' 
         });
       } else if (isAssistant) {
+        const contentEl = el.querySelector(SELECTORS.assistantContent) || isAssistant;
         messages.push({ 
           role: 'assistant', 
-          content: isAssistant.textContent || '' 
+          content: contentEl.textContent || '' 
         });
       }
     });

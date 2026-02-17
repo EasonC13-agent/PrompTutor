@@ -119,8 +119,8 @@ if (JSDOM) {
   const fixtures = {
     chatgpt: `<div data-message-author-role="user"><div class="markdown">Hello</div></div>
               <div data-message-author-role="assistant"><div class="markdown">Hi there</div></div>`,
-    claude: `<div data-testid="user-message"><div class="prose">Hello</div></div>
-             <div data-testid="assistant-message"><div class="prose">Hi there</div></div>`,
+    claude: `<div data-test-render-count="1"><div class="font-user-message">Hello</div></div>
+             <div data-test-render-count="2"><div class="font-claude-response"><div class="font-claude-response-body">Hi there</div></div></div>`,
     grok: `<div class="items-end"><div class="message-bubble"><div class="markdown">Hello</div></div></div>
            <div class="items-start"><div class="message-bubble"><div class="markdown">Hi there</div></div></div>`,
     copilot: `<div data-testid="message"><div data-testid="user-message"><div class="markdown">Hello</div></div></div>
@@ -129,8 +129,8 @@ if (JSDOM) {
                <div data-role="assistant" class="ds-message"><div class="ds-markdown">Hi there</div></div>`,
     doubao: `<div data-role="user" class="message-item"><div class="markdown">Hello</div></div>
              <div data-role="assistant" class="message-item"><div class="markdown">Hi there</div></div>`,
-    gemini: `<div data-message-id="1" class="conversation-container"><div class="user-query"><div class="markdown">Hello</div></div></div>
-             <div data-message-id="2" class="conversation-container"><div class="model-response-text"><div class="markdown">Hi there</div></div></div>`,
+    gemini: `<div class="message-container"><div class="user-query-container"><div class="query-text">Hello</div></div></div>
+             <div class="message-container"><div class="response-container"><div class="model-response-text">Hi there</div></div></div>`,
     perplexity: `<div data-testid="message" data-role="user"><div class="prose">Hello</div></div>
                  <div data-testid="message" data-role="assistant"><div class="prose">Hi there</div></div>`,
     poe: `<div class="Message_row__1" data-message-id="1"><div class="Message_humanMessage__1"><div class="markdown">Hello</div></div></div>
