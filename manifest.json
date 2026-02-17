@@ -12,16 +12,20 @@
   ],
   "oauth2": {
     "client_id": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
-    "scopes": ["openid", "email", "profile"]
+    "scopes": [
+      "openid",
+      "email",
+      "profile"
+    ]
   },
   "host_permissions": [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
     "https://claude.ai/*",
     "https://grok.com/*",
-    "https://x.com/i/grok*",
+    "https://x.com/i/grok/*",
     "https://copilot.microsoft.com/*",
-    "https://www.bing.com/chat*",
+    "https://www.bing.com/chat/*",
     "https://chat.deepseek.com/*",
     "https://www.doubao.com/*",
     "https://gemini.google.com/*",
@@ -35,18 +39,68 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*", "https://grok.com/*", "https://x.com/i/grok*", "https://copilot.microsoft.com/*", "https://www.bing.com/chat*", "https://chat.deepseek.com/*", "https://www.doubao.com/*", "https://gemini.google.com/*", "https://www.perplexity.ai/*", "https://poe.com/*", "https://huggingface.co/chat/*"],
-      "js": ["src/content/dom-parser.js", "src/content/bridge.js"],
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://grok.com/*",
+        "https://x.com/i/grok/*",
+        "https://copilot.microsoft.com/*",
+        "https://www.bing.com/chat/*",
+        "https://chat.deepseek.com/*",
+        "https://www.doubao.com/*",
+        "https://gemini.google.com/*",
+        "https://www.perplexity.ai/*",
+        "https://poe.com/*",
+        "https://huggingface.co/chat/*"
+      ],
+      "js": [
+        "src/content/dom-parser.js",
+        "src/content/bridge.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*", "https://grok.com/*", "https://x.com/i/grok*", "https://copilot.microsoft.com/*", "https://www.bing.com/chat*", "https://chat.deepseek.com/*", "https://www.doubao.com/*", "https://gemini.google.com/*", "https://www.perplexity.ai/*", "https://poe.com/*", "https://huggingface.co/chat/*"],
-      "js": ["src/content/overlay.js"],
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://grok.com/*",
+        "https://x.com/i/grok/*",
+        "https://copilot.microsoft.com/*",
+        "https://www.bing.com/chat/*",
+        "https://chat.deepseek.com/*",
+        "https://www.doubao.com/*",
+        "https://gemini.google.com/*",
+        "https://www.perplexity.ai/*",
+        "https://poe.com/*",
+        "https://huggingface.co/chat/*"
+      ],
+      "js": [
+        "src/content/overlay.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*", "https://grok.com/*", "https://x.com/i/grok*", "https://copilot.microsoft.com/*", "https://www.bing.com/chat*", "https://chat.deepseek.com/*", "https://www.doubao.com/*", "https://gemini.google.com/*", "https://www.perplexity.ai/*", "https://poe.com/*", "https://huggingface.co/chat/*"],
-      "js": ["src/content/guidance.js", "src/content/detector.js"],
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://grok.com/*",
+        "https://x.com/i/grok/*",
+        "https://copilot.microsoft.com/*",
+        "https://www.bing.com/chat/*",
+        "https://chat.deepseek.com/*",
+        "https://www.doubao.com/*",
+        "https://gemini.google.com/*",
+        "https://www.perplexity.ai/*",
+        "https://poe.com/*",
+        "https://huggingface.co/chat/*"
+      ],
+      "js": [
+        "src/content/guidance.js",
+        "src/content/detector.js"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -65,8 +119,24 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["src/content/interceptor.js"],
-      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*", "https://grok.com/*", "https://x.com/i/grok*", "https://copilot.microsoft.com/*", "https://www.bing.com/chat*", "https://chat.deepseek.com/*", "https://www.doubao.com/*", "https://gemini.google.com/*", "https://www.perplexity.ai/*", "https://poe.com/*", "https://huggingface.co/chat/*"]
+      "resources": [
+        "src/content/interceptor.js"
+      ],
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://grok.com/*",
+        "https://x.com/i/grok/*",
+        "https://copilot.microsoft.com/*",
+        "https://www.bing.com/chat/*",
+        "https://chat.deepseek.com/*",
+        "https://www.doubao.com/*",
+        "https://gemini.google.com/*",
+        "https://www.perplexity.ai/*",
+        "https://poe.com/*",
+        "https://huggingface.co/chat/*"
+      ]
     }
   ]
 }
