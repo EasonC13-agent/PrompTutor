@@ -24,9 +24,10 @@ rsync -av \
   --exclude='relay-extension-background.js' \
   --exclude='README.md' \
   --exclude='.env*' \
+  --exclude='.github' \
   . dist/
 
 # Create zip
-cd dist && zip -r ../chat-collector.zip . && cd ..
+cd dist && zip -r ../promptutor.zip . && cd ..
 
-echo "Built: chat-collector.zip ($(du -h chat-collector.zip | cut -f1))"
+echo "Built: promptutor.zip ($(du -h promptutor.zip | cut -f1))"
