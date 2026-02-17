@@ -19,6 +19,11 @@ rsync -av \
   --exclude='package*.json' \
   --exclude='dist' \
   --exclude='chat-collector.zip' \
+  --exclude='backend' \
+  --exclude='.DS_Store' \
+  --exclude='relay-extension-background.js' \
+  --exclude='README.md' \
+  --exclude='.env*' \
   . dist/
 
 # Create zip
