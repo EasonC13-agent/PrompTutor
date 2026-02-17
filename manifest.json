@@ -18,6 +18,10 @@
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
     "https://claude.ai/*",
+    "https://grok.com/*",
+    "https://x.com/i/grok*",
+    "https://copilot.microsoft.com/*",
+    "https://www.bing.com/chat*",
     "https://YOUR_SERVER_URL/*"
   ],
   "background": {
@@ -25,17 +29,17 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*"],
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*", "https://grok.com/*", "https://x.com/i/grok*", "https://copilot.microsoft.com/*", "https://www.bing.com/chat*"],
       "js": ["src/content/dom-parser.js", "src/content/bridge.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*"],
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*", "https://grok.com/*", "https://x.com/i/grok*", "https://copilot.microsoft.com/*", "https://www.bing.com/chat*"],
       "js": ["src/content/overlay.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*"],
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*", "https://grok.com/*", "https://x.com/i/grok*", "https://copilot.microsoft.com/*", "https://www.bing.com/chat*"],
       "js": ["src/content/guidance.js", "src/content/detector.js"],
       "run_at": "document_idle"
     }
@@ -56,7 +60,7 @@
   "web_accessible_resources": [
     {
       "resources": ["src/content/interceptor.js"],
-      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*"]
+      "matches": ["https://chat.openai.com/*", "https://chatgpt.com/*", "https://claude.ai/*", "https://grok.com/*", "https://x.com/i/grok*", "https://copilot.microsoft.com/*", "https://www.bing.com/chat*"]
     }
   ]
 }

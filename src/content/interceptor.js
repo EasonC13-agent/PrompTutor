@@ -29,6 +29,27 @@
     '/settings'           // Settings
   ];
   
+  const GROK_INCLUDE = [
+    '/api/rpc',           // Grok RPC endpoints
+    '/api/2/grok/'        // Grok conversation API
+  ];
+  
+  const GROK_EXCLUDE = [
+    '/api/2/grok/threads', // Thread list
+    '/settings'
+  ];
+  
+  const COPILOT_INCLUDE = [
+    '/turing/conversation/',  // Copilot conversation
+    '/sydney/',               // Sydney backend
+    '/c/api/conversations'    // Copilot conversations API
+  ];
+  
+  const COPILOT_EXCLUDE = [
+    '/turing/conversation/create', // Create new conversation
+    '/settings'
+  ];
+  
   // Store original fetch BEFORE anything else runs
   const originalFetch = window.fetch;
   
@@ -42,7 +63,9 @@
     // Check if this is a chat API call we care about
     const isChatGPT = CHATGPT_INCLUDE.some(p => url.includes(p)) && !CHATGPT_EXCLUDE.some(p => url.includes(p));
     const isClaude = CLAUDE_INCLUDE.some(p => url.includes(p)) && !CLAUDE_EXCLUDE.some(p => url.includes(p));
-    const isRelevant = isChatGPT || isClaude;
+    const isGrok = GROK_INCLUDE.some(p => url.includes(p)) && !GROK_EXCLUDE.some(p => url.includes(p));
+    const isCopilot = COPILOT_INCLUDE.some(p => url.includes(p)) && !COPILOT_EXCLUDE.some(p => url.includes(p));
+    const isRelevant = isChatGPT || isClaude || isGrok || isCopilot;
     
     if (isRelevant) {
       console.log('[Chat Collector] Intercepted:', url);
@@ -115,6 +138,8 @@
   function detectPlatform(url) {
     if (url.includes('openai.com') || url.includes('chatgpt.com')) return 'chatgpt';
     if (url.includes('claude.ai')) return 'claude';
+    if (url.includes('grok.com') || url.includes('x.com/i/grok')) return 'grok';
+    if (url.includes('copilot.microsoft.com') || url.includes('bing.com/chat') || url.includes('bing.com/turing')) return 'copilot';
     return 'unknown';
   }
   

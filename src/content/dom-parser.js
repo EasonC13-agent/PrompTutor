@@ -59,6 +59,75 @@
         'main',
         '[role="main"]'
       ]
+    },
+    grok: {
+      messageContainer: [
+        '[data-testid="message"]',
+        '[class*="message-row"]',
+        '[class*="MessageRow"]',
+        '.message-bubble'
+      ],
+      userMessage: [
+        '[data-testid="user-message"]',
+        '[class*="user-message"]',
+        '[class*="UserMessage"]'
+      ],
+      assistantMessage: [
+        '[data-testid="assistant-message"]',
+        '[class*="assistant-message"]',
+        '[class*="AssistantMessage"]',
+        '[class*="grok-message"]'
+      ],
+      messageContent: [
+        '.markdown',
+        '.prose',
+        '[class*="message-content"]',
+        '[class*="MessageContent"]',
+        'p'
+      ],
+      chatContainer: [
+        'main',
+        '[role="main"]',
+        '[class*="conversation"]',
+        '[class*="chat-container"]'
+      ]
+    },
+    copilot: {
+      messageContainer: [
+        '[data-testid="message"]',
+        'cib-message-group',
+        '[class*="message-group"]',
+        '[class*="ChatMessage"]',
+        '[class*="turn"]'
+      ],
+      userMessage: [
+        '[data-testid="user-message"]',
+        'cib-message-group[source="user"]',
+        '[class*="user-message"]',
+        '[class*="UserMessage"]',
+        '[data-author="user"]'
+      ],
+      assistantMessage: [
+        '[data-testid="assistant-message"]',
+        'cib-message-group[source="bot"]',
+        '[class*="bot-message"]',
+        '[class*="AssistantMessage"]',
+        '[data-author="bot"]'
+      ],
+      messageContent: [
+        '.markdown',
+        '.prose',
+        '[class*="message-content"]',
+        '[class*="ac-textBlock"]',
+        'p'
+      ],
+      chatContainer: [
+        'main',
+        '[role="main"]',
+        '#b_content',
+        '[class*="chat-container"]',
+        '[class*="conversation-container"]'
+      ]
     }
   };
   
@@ -78,6 +147,8 @@
     const host = window.location.hostname;
     if (host.includes('chatgpt.com') || host.includes('openai.com')) return 'chatgpt';
     if (host.includes('claude.ai')) return 'claude';
+    if (host.includes('grok.com') || (host.includes('x.com') && window.location.pathname.startsWith('/i/grok'))) return 'grok';
+    if (host.includes('copilot.microsoft.com') || (host.includes('bing.com') && window.location.pathname.startsWith('/chat'))) return 'copilot';
     return 'unknown';
   }
   

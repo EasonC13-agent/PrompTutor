@@ -22,6 +22,8 @@
   function getPlatform() {
     if (location.hostname.includes('chatgpt') || location.hostname.includes('chat.openai')) return 'chatgpt';
     if (location.hostname.includes('claude')) return 'claude';
+    if (location.hostname.includes('grok.com') || (location.hostname.includes('x.com') && location.pathname.startsWith('/i/grok'))) return 'grok';
+    if (location.hostname.includes('copilot.microsoft.com') || (location.hostname.includes('bing.com') && location.pathname.startsWith('/chat'))) return 'copilot';
     return 'unknown';
   }
 
@@ -35,6 +37,17 @@
     if (platform === 'claude') {
       return document.querySelector('div[contenteditable="true"].ProseMirror') ||
              document.querySelector('fieldset div[contenteditable="true"]') ||
+             document.querySelector('div[contenteditable="true"]');
+    }
+    if (platform === 'grok') {
+      return document.querySelector('textarea[placeholder]') ||
+             document.querySelector('div[contenteditable="true"]') ||
+             document.querySelector('[role="textbox"]');
+    }
+    if (platform === 'copilot') {
+      return document.querySelector('#searchbox') ||
+             document.querySelector('textarea[placeholder]') ||
+             document.querySelector('[role="textbox"]') ||
              document.querySelector('div[contenteditable="true"]');
     }
     return null;
