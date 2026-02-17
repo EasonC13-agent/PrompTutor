@@ -1,13 +1,19 @@
 // Poe-specific adapter
+// Real DOM tested: CSS Modules with hash suffixes
+// Messages: [class*="ChatMessage_chatMessage"]
+// User: has [class*="rightSide"] descendant
+// Assistant: no rightSide descendant
+// Content: [class*="messageTextContainer"]
+// data-complete="true" when done streaming
 
 console.log('[Chat Collector] Poe adapter loaded');
 
 const SELECTORS = {
-  messageContainer: '[class*="Message_row"], [class*="message-row"], [class*="ChatMessage"], [data-message-id]',
-  userMessage: '[class*="Message_humanMessage"], [class*="human-message"], [data-role="user"]',
-  assistantMessage: '[class*="Message_botMessage"], [class*="bot-message"], [data-role="assistant"]',
-  messageContent: '.markdown, .prose, [class*="Message_markdown"], [class*="message-content"]',
-  conversationTitle: 'title'
+  messageContainer: '[class*="ChatMessage_chatMessage"]',
+  userMessage: '[class*="rightSideMessageBubble"]',
+  assistantMessage: null,  // determined by absence of rightSide
+  messageContent: '[class*="messageTextContainer"]',
+  conversationList: null
 };
 
 window.PoeAdapter = {
@@ -15,12 +21,17 @@ window.PoeAdapter = {
 
   parseFromDOM() {
     const messages = [];
-    document.querySelectorAll(SELECTORS.messageContainer).forEach(el => {
-      const role = el.getAttribute('data-role') ||
-                   (el.matches('[class*="Message_humanMessage"], [class*="human-message"]') ? 'user' : 'assistant');
-      const content = el.querySelector(SELECTORS.messageContent)?.textContent || '';
+    document.querySelectorAll('[class*="ChatMessage_chatMessage"]').forEach(el => {
+      const hasRightSide = el.querySelector('[class*="rightSide"]');
+      const role = hasRightSide ? 'user' : 'assistant';
+      const contentEl = el.querySelector('[class*="messageTextContainer"]');
+      const content = (contentEl || el).textContent?.trim();
       if (content) {
-        messages.push({ role, content });
+        messages.push({
+          role,
+          content,
+          complete: el.getAttribute('data-complete') === 'true'
+        });
       }
     });
     return messages;

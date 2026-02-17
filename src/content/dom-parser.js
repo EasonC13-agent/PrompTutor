@@ -130,34 +130,31 @@
       ]
     },
     deepseek: {
+      // Real DOM: .ds-message for all messages
+      // Assistant messages have .ds-markdown child, user messages do NOT
+      // Role differentiation done in parseMessages() by checking for .ds-markdown child
       messageContainer: [
-        '[class*="message-item"]',
-        '[class*="chat-message"]',
+        '.ds-message',
         '[data-role]',
-        '.ds-message'
+        '[class*="message-item"]'
       ],
       userMessage: [
-        '[data-role="user"]',
-        '[class*="user-message"]',
-        '[class*="human-message"]'
+        '.ds-message:not(:has(.ds-markdown))',  // :has() may not work in all browsers
+        '[data-role="user"]'
       ],
       assistantMessage: [
-        '[data-role="assistant"]',
-        '[class*="assistant-message"]',
-        '[class*="ai-message"]'
+        '.ds-message:has(.ds-markdown)',  // :has() may not work in all browsers
+        '[data-role="assistant"]'
       ],
       messageContent: [
-        '.markdown',
         '.ds-markdown',
+        '.markdown',
         '[class*="message-content"]',
-        '.prose',
         'p'
       ],
       chatContainer: [
         'main',
-        '[class*="chat-container"]',
-        '[class*="conversation"]',
-        '#chat-container'
+        '[role="main"]'
       ]
     },
     doubao: {
@@ -227,65 +224,64 @@
       ]
     },
     perplexity: {
+      // Real DOM: user queries are h1 elements with Tailwind class containing "group/query"
+      // Assistant answers are .prose elements
+      // Container elements have class containing "threadContentWidth"
       messageContainer: [
-        '[class*="message"]',
+        '[class*="threadContentWidth"]',
         '[class*="ConversationMessage"]',
-        '[data-testid="message"]',
-        '.pb-md'
+        '[data-testid="message"]'
       ],
       userMessage: [
+        'h1[class*="query"]',
         '[class*="user-message"]',
-        '[class*="UserMessage"]',
         '[data-role="user"]'
       ],
       assistantMessage: [
+        '.prose',
         '[class*="assistant-message"]',
-        '[class*="AssistantMessage"]',
         '[data-role="assistant"]'
       ],
       messageContent: [
         '.prose',
-        '.markdown',
-        '[class*="message-content"]',
-        '[class*="answer-text"]',
         'p'
       ],
       chatContainer: [
         'main',
-        '[role="main"]',
-        '[class*="conversation"]',
-        '[class*="chat-container"]'
+        '[role="main"]'
       ]
     },
     poe: {
+      // Real DOM: CSS Modules with hash suffixes
+      // Messages: [class*="ChatMessage_chatMessage"]
+      // User messages have [class*="rightSide"] descendant
+      // Content in [class*="messageTextContainer"]
+      // data-complete="true" when done streaming
       messageContainer: [
+        '[class*="ChatMessage_chatMessage"]',
         '[class*="Message_row"]',
-        '[class*="message-row"]',
-        '[class*="ChatMessage"]',
         '[data-message-id]'
       ],
       userMessage: [
+        '[class*="rightSideMessageBubble"]',
         '[class*="Message_humanMessage"]',
-        '[class*="human-message"]',
         '[data-role="user"]'
       ],
       assistantMessage: [
         '[class*="Message_botMessage"]',
-        '[class*="bot-message"]',
         '[data-role="assistant"]'
       ],
       messageContent: [
+        '[class*="messageTextContainer"]',
+        '[class*="Message_row"]',
         '.markdown',
         '.prose',
-        '[class*="Message_markdown"]',
-        '[class*="message-content"]',
         'p'
       ],
       chatContainer: [
-        'main',
+        '[class*="ChatMessagesView"]',
         '[class*="ChatMessages"]',
-        '[class*="chat-container"]',
-        '[class*="conversation"]'
+        'main'
       ]
     },
     huggingchat: {
@@ -402,11 +398,34 @@
     const containers = $$(sel.messageContainer);
     
     for (const container of containers) {
-      const role = container.getAttribute('data-message-author-role') ||
-                   (container.matches(sel.userMessage?.join(',') || '') ? 'user' : 'assistant');
+      let role;
+      let contentEl;
       
-      // Find content element
-      const contentEl = $(sel.messageContent, container);
+      // Platform-specific role detection
+      if (platform === 'deepseek') {
+        // DeepSeek: assistant messages have .ds-markdown child, user messages don't
+        const hasMarkdown = container.querySelector('.ds-markdown');
+        role = hasMarkdown ? 'assistant' : 'user';
+        contentEl = hasMarkdown || container;
+      } else if (platform === 'perplexity') {
+        // Perplexity: user queries are h1 elements, assistant answers are .prose
+        const isQuery = container.querySelector('h1[class*="query"]');
+        const isProse = container.querySelector('.prose');
+        if (isQuery) { role = 'user'; contentEl = isQuery; }
+        else if (isProse) { role = 'assistant'; contentEl = isProse; }
+        else continue;
+      } else if (platform === 'poe') {
+        // Poe: user messages have [class*="rightSide"] descendant
+        const hasRightSide = container.querySelector('[class*="rightSide"]');
+        role = hasRightSide ? 'user' : 'assistant';
+        contentEl = container.querySelector('[class*="messageTextContainer"]') || container;
+      } else {
+        // Default role detection
+        role = container.getAttribute('data-message-author-role') ||
+               (container.matches(sel.userMessage?.join(',') || '') ? 'user' : 'assistant');
+        contentEl = $(sel.messageContent, container);
+      }
+      
       const content = extractText(contentEl || container);
       
       if (content) {

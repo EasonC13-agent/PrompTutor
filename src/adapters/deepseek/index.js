@@ -1,13 +1,13 @@
 // DeepSeek-specific adapter
+// Real DOM tested: .ds-message for all messages
+// Assistant messages have .ds-markdown child, user messages do NOT
 
 console.log('[Chat Collector] DeepSeek adapter loaded');
 
 const SELECTORS = {
-  messageContainer: '[class*="message-item"], [class*="chat-message"], [data-role], .ds-message',
-  userMessage: '[data-role="user"], [class*="user-message"]',
-  assistantMessage: '[data-role="assistant"], [class*="assistant-message"]',
-  messageContent: '.markdown, .ds-markdown, [class*="message-content"], .prose',
-  conversationTitle: 'title'
+  messageContainer: '.ds-message',
+  assistantMessage: '.ds-markdown',  // child of .ds-message for assistant
+  conversationList: null
 };
 
 window.DeepSeekAdapter = {
@@ -15,12 +15,12 @@ window.DeepSeekAdapter = {
 
   parseFromDOM() {
     const messages = [];
-    document.querySelectorAll(SELECTORS.messageContainer).forEach(el => {
-      const role = el.getAttribute('data-role') ||
-                   (el.matches('[class*="user-message"]') ? 'user' : 'assistant');
-      const content = el.querySelector(SELECTORS.messageContent)?.textContent || '';
-      if (content) {
-        messages.push({ role, content });
+    document.querySelectorAll('.ds-message').forEach(el => {
+      const hasMarkdown = el.querySelector('.ds-markdown');
+      const role = hasMarkdown ? 'assistant' : 'user';
+      const content = hasMarkdown ? hasMarkdown.textContent : el.textContent;
+      if (content?.trim()) {
+        messages.push({ role, content: content.trim() });
       }
     });
     return messages;

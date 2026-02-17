@@ -125,16 +125,16 @@ if (JSDOM) {
            <div class="items-start"><div class="message-bubble"><div class="markdown">Hi there</div></div></div>`,
     copilot: `<div data-testid="message"><div data-testid="user-message"><div class="markdown">Hello</div></div></div>
               <div data-testid="message"><div data-testid="assistant-message"><div class="markdown">Hi there</div></div></div>`,
-    deepseek: `<div data-role="user" class="ds-message"><div class="ds-markdown">Hello</div></div>
-               <div data-role="assistant" class="ds-message"><div class="ds-markdown">Hi there</div></div>`,
+    deepseek: `<div class="ds-message">Hello</div>
+               <div class="ds-message"><div class="ds-markdown">Hi there</div></div>`,
     doubao: `<div data-role="user" class="message-item"><div class="markdown">Hello</div></div>
              <div data-role="assistant" class="message-item"><div class="markdown">Hi there</div></div>`,
     gemini: `<div class="message-container"><div class="user-query-container"><div class="query-text">Hello</div></div></div>
              <div class="message-container"><div class="response-container"><div class="model-response-text">Hi there</div></div></div>`,
-    perplexity: `<div data-testid="message" data-role="user"><div class="prose">Hello</div></div>
-                 <div data-testid="message" data-role="assistant"><div class="prose">Hi there</div></div>`,
-    poe: `<div class="Message_row__1" data-message-id="1"><div class="Message_humanMessage__1"><div class="markdown">Hello</div></div></div>
-          <div class="Message_row__2" data-message-id="2"><div class="Message_botMessage__1"><div class="markdown">Hi there</div></div></div>`,
+    perplexity: `<div class="threadContentWidth_abc123"><h1 class="group/query text-lg">Hello</h1></div>
+                 <div class="threadContentWidth_def456"><div class="prose">Hi there</div></div>`,
+    poe: `<div class="ChatMessage_chatMessage__abc1"><div class="rightSideMessageBubble__xyz"><div class="messageTextContainer__def">Hello</div></div></div>
+          <div class="ChatMessage_chatMessage__abc2" data-complete="true"><div class="messageTextContainer__ghi">Hi there</div></div>`,
     huggingchat: `<div class="message user" data-role="user"><div class="prose">Hello</div></div>
                   <div class="message assistant" data-role="assistant"><div class="prose">Hi there</div></div>`,
   };

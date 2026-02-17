@@ -63,7 +63,8 @@
              document.querySelector('#searchbox');
     }
     if (platform === 'deepseek') {
-      return document.querySelector('textarea[placeholder]') ||
+      // Real DOM: plain textarea (classes are hashed like ._27c9245)
+      return document.querySelector('textarea') ||
              document.querySelector('div[contenteditable="true"]') ||
              document.querySelector('[role="textbox"]');
     }
@@ -82,15 +83,17 @@
              document.querySelector('.ql-editor');
     }
     if (platform === 'perplexity') {
-      // Perplexity uses div#ask-input contenteditable
-      return document.querySelector('div#ask-input[contenteditable="true"]') ||
+      // Real DOM: textarea, or div#ask-input (contenteditable)
+      return document.querySelector('textarea') ||
+             document.querySelector('div#ask-input[contenteditable="true"]') ||
              document.querySelector('div#ask-input') ||
-             document.querySelector('div[contenteditable="true"]') ||
+             document.querySelector('[contenteditable="true"]') ||
              document.querySelector('[role="textbox"]');
     }
     if (platform === 'poe') {
-      return document.querySelector('textarea[placeholder]') ||
-             document.querySelector('div[contenteditable="true"]') ||
+      // Real DOM: textarea with GrowingTextArea class (CSS Modules hash)
+      return document.querySelector('textarea[class*="GrowingTextArea"]') ||
+             document.querySelector('textarea') ||
              document.querySelector('[role="textbox"]');
     }
     if (platform === 'huggingchat') {

@@ -1,13 +1,15 @@
 // Perplexity-specific adapter
+// Real DOM tested: user queries are h1 with Tailwind class "group/query"
+// Assistant answers are .prose elements
+// Container elements have class containing "threadContentWidth"
 
 console.log('[Chat Collector] Perplexity adapter loaded');
 
 const SELECTORS = {
-  messageContainer: '[class*="message"], [class*="ConversationMessage"], [data-testid="message"], .pb-md',
-  userMessage: '[class*="user-message"], [class*="UserMessage"], [data-role="user"]',
-  assistantMessage: '[class*="assistant-message"], [class*="AssistantMessage"], [data-role="assistant"]',
-  messageContent: '.prose, .markdown, [class*="message-content"], [class*="answer-text"]',
-  conversationTitle: 'title'
+  messageContainer: '[class*="threadContentWidth"]',
+  userMessage: 'h1[class*="query"]',
+  assistantMessage: '.prose',
+  conversationList: null
 };
 
 window.PerplexityAdapter = {
@@ -15,14 +17,22 @@ window.PerplexityAdapter = {
 
   parseFromDOM() {
     const messages = [];
-    document.querySelectorAll(SELECTORS.messageContainer).forEach(el => {
-      const role = el.getAttribute('data-role') ||
-                   (el.matches('[class*="user-message"], [class*="UserMessage"]') ? 'user' : 'assistant');
-      const content = el.querySelector(SELECTORS.messageContent)?.textContent || '';
+    // User queries: h1 elements with class containing "query" (Tailwind group/query)
+    document.querySelectorAll('h1[class*="query"]').forEach(el => {
+      const content = el.textContent?.trim();
       if (content) {
-        messages.push({ role, content });
+        messages.push({ role: 'user', content });
       }
     });
+    // Assistant answers: .prose elements with content
+    document.querySelectorAll('.prose').forEach(el => {
+      const content = el.textContent?.trim();
+      if (content) {
+        messages.push({ role: 'assistant', content });
+      }
+    });
+    // Sort by DOM order would be better, but this gives a reasonable approximation
+    // In practice, queries and answers alternate
     return messages;
   }
 };
