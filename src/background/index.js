@@ -74,8 +74,76 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       userAnonId = message.userAnonId || userAnonId;
       syncAllCachedData().then(result => sendResponse(result));
       return true; // Keep channel open for async response
+
+    case 'GOOGLE_SIGN_IN':
+      handleGoogleSignIn().then(result => sendResponse(result)).catch(err => sendResponse({ error: err.message }));
+      return true; // Keep channel open for async response
   }
 });
+
+// Handle Google Sign-In via launchWebAuthFlow (runs in background, survives popup close)
+async function handleGoogleSignIn() {
+  const manifest = chrome.runtime.getManifest();
+  const clientId = manifest.oauth2.client_id;
+  const redirectUrl = chrome.identity.getRedirectURL();
+  const scopes = ['openid', 'email', 'profile'].join(' ');
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUrl)}&scope=${encodeURIComponent(scopes)}`;
+
+  console.log('[PrompTutor BG] Starting launchWebAuthFlow, redirect:', redirectUrl);
+
+  const responseUrl = await chrome.identity.launchWebAuthFlow({
+    url: authUrl,
+    interactive: true
+  });
+
+  console.log('[PrompTutor BG] Auth response URL:', responseUrl?.slice(0, 80));
+
+  // Extract access token from fragment
+  const urlParams = new URL(responseUrl.replace('#', '?')).searchParams;
+  const token = urlParams.get('access_token');
+
+  if (!token) {
+    throw new Error('No token received from Google');
+  }
+
+  // Get user info
+  const userInfoRes = await fetch(
+    'https://www.googleapis.com/oauth2/v3/userinfo',
+    { headers: { 'Authorization': `Bearer ${token}` } }
+  );
+
+  if (!userInfoRes.ok) {
+    throw new Error('Failed to get user info');
+  }
+
+  const userInfo = await userInfoRes.json();
+
+  // Hash email for anonymous ID
+  const encoder = new TextEncoder();
+  const data = encoder.encode(userInfo.email.toLowerCase().trim());
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const emailHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+  const user = {
+    email: userInfo.email,
+    name: userInfo.name,
+    picture: userInfo.picture,
+    anonId: emailHash,
+  };
+
+  // Save to storage immediately (popup may have closed during auth flow)
+  await chrome.storage.local.set({
+    user,
+    accessToken: token,
+    hasConsented: true,
+  });
+  userAnonId = emailHash;
+
+  console.log('[PrompTutor BG] Sign-in success, saved to storage:', user.email);
+
+  return { user, accessToken: token };
+}
 
 // Handle incoming chat data
 function handleChatData(payload, tabUrl) {

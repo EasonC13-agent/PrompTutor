@@ -112,43 +112,17 @@ googleLoginBtn.addEventListener('click', async () => {
   googleLoginBtn.textContent = 'Signing in...';
   
   try {
-    // Get OAuth token via Chrome Identity API
-    const authResult = await chrome.identity.getAuthToken({ 
-      interactive: true,
-      scopes: ['openid', 'email', 'profile']
-    });
+    // Move auth to background script to avoid popup closing issue
+    const response = await chrome.runtime.sendMessage({ type: 'GOOGLE_SIGN_IN' });
     
-    if (!authResult.token) {
-      throw new Error('No token received from Google');
+    if (response.error) {
+      throw new Error(response.error);
     }
     
-    // Get user info from Google
-    const userInfoRes = await fetch(
-      'https://www.googleapis.com/oauth2/v3/userinfo',
-      { headers: { 'Authorization': `Bearer ${authResult.token}` } }
-    );
+    currentUser = response.user;
+    accessToken = response.accessToken;
     
-    if (!userInfoRes.ok) {
-      // Token might be invalid, clear it and retry
-      await chrome.identity.removeCachedAuthToken({ token: authResult.token });
-      throw new Error('Failed to get user info. Please try again.');
-    }
-    
-    const userInfo = await userInfoRes.json();
-    
-    // Generate anonymous user ID from email hash
-    const emailHash = await hashEmail(userInfo.email);
-    
-    currentUser = {
-      email: userInfo.email,
-      name: userInfo.name,
-      picture: userInfo.picture,
-      anonId: emailHash, // Anonymous ID for server
-    };
-    
-    accessToken = authResult.token;
-    
-    // Save state locally - no backend verification needed
+    // Save state locally
     await chrome.storage.local.set({
       user: currentUser,
       accessToken: accessToken,
