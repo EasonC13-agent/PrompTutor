@@ -1,9 +1,11 @@
 // Background service worker
 // Handles data collection, caching, and sync to backend
 
-// Config
+importScripts('../config.js');
+
+// Config (apiEndpoint sourced from src/config.js)
 const CONFIG = {
-  apiEndpoint: 'https://chat-collector.eason.phd'
+  apiEndpoint: PROMPTUTOR_CONFIG.apiEndpoint
 };
 
 // State
@@ -77,6 +79,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'GOOGLE_SIGN_IN':
       handleGoogleSignIn().then(result => sendResponse(result)).catch(err => sendResponse({ error: err.message }));
+      return true; // Keep channel open for async response
+
+    case 'DETECT':
+      fetch(`${CONFIG.apiEndpoint}/api/detect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Id': message.userId || 'anonymous'
+        },
+        body: JSON.stringify(message.payload)
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => sendResponse({ data }))
+        .catch(err => sendResponse({ error: err.message }));
       return true; // Keep channel open for async response
   }
 });

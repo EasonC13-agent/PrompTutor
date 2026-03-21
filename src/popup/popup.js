@@ -1,8 +1,8 @@
 // Popup UI logic with Chrome Identity API (Google OAuth)
 
-// Config - will be replaced during build or set via storage
+// Config sourced from src/config.js (loaded before this script in index.html)
 const CONFIG = {
-  apiEndpoint: 'https://chat-collector.eason.phd',
+  apiEndpoint: PROMPTUTOR_CONFIG.apiEndpoint,
 };
 
 // Hash email for anonymous ID

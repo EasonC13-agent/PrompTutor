@@ -4,7 +4,7 @@
 (function() {
   'use strict';
 
-  const API_ENDPOINT = 'https://chat-collector.eason.phd';
+  const API_ENDPOINT = PROMPTUTOR_CONFIG.apiEndpoint;
   let mode = 'collect';
   let userAnonId = null;
   let isProcessing = false;
@@ -126,20 +126,17 @@
 
   async function detectAnswerSeeking(message) {
     try {
-      const response = await fetch(`${API_ENDPOINT}/api/detect`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userAnonId || 'anonymous'
-        },
-        body: JSON.stringify({
+      const result = await chrome.runtime.sendMessage({
+        type: 'DETECT',
+        userId: userAnonId || 'anonymous',
+        payload: {
           message,
           platform: getPlatform(),
           context: { url: location.href }
-        })
+        }
       });
-      if (!response.ok) return null;
-      return await response.json();
+      if (!result || result.error) return null;
+      return result.data;
     } catch (e) {
       console.error('[PrompTutor] Detection error:', e);
       return null;

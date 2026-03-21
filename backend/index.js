@@ -44,7 +44,7 @@ const pool = process.env.DATABASE_URL
       port: process.env.DB_PORT || 5432,
       database: process.env.DB_NAME || 'chat_collector',
       user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || '',
+      password: process.env.DB_PASSWORD || 'mysecretpassword',
     });
 
 // Middleware
@@ -52,6 +52,14 @@ app.use(cors({
   origin: process.env.CORS_ORIGIN || true,
   credentials: true,
 }));
+// Chrome Private Network Access: allow requests from extensions/public origins to localhost
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 app.use(express.json({ limit: '10mb' }));
 
 // Auth middleware - uses anonymous user ID (hashed email)
@@ -279,8 +287,6 @@ app.delete('/api/conversation', authenticate, async (req, res) => {
   }
 });
 
-
-// === GUIDANCE / DETECTION ENDPOINTS ===
 
 const DETECTION_SYSTEM_PROMPT = `You are an educational AI assistant analyzer. Your task is to determine if a student's message to an AI chatbot is "answer-seeking" (asking for direct answers/solutions) vs "help-seeking" (asking for explanations, guidance, or learning support).
 
