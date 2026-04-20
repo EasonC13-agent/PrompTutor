@@ -14,62 +14,134 @@
     .subtitle { color: #666; margin-bottom: 2rem; }
     .updated { color: #999; font-size: 0.9rem; margin-bottom: 2rem; display: block; }
     .contact { background: #f7f7f7; padding: 1rem 1.25rem; border-radius: 8px; margin-top: 2rem; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.95rem; }
+    th, td { text-align: left; padding: 0.6rem 0.8rem; border: 1px solid #ddd; }
+    th { background: #f5f5f5; font-weight: 600; }
   </style>
 </head>
 <body>
   <h1>Privacy Policy</h1>
-  <p class="subtitle">PrompTutor - Chrome Extension</p>
-  <span class="updated">Last updated: February 2025</span>
+  <p class="subtitle">PrompTutor – Chrome Extension</p>
+  <span class="updated">Last updated: April 2026</span>
 
-  <h2>Purpose</h2>
-  <p>PrompTutor is a Chrome extension developed for educational research on student-AI interactions. It is part of a research project at Carnegie Mellon University (CMU). The study aims to understand how students use AI chatbots for learning, in order to improve AI-assisted education.</p>
+  <h2>Overview</h2>
+  <p>PrompTutor is a Chrome extension built for educational research on student–AI interactions at Carnegie Mellon University. This policy explains exactly what data the extension collects, how it is used, and the controls available to you. By installing and using PrompTutor you agree to this policy.</p>
 
   <h2>Data We Collect</h2>
-  <p>When you explicitly opt in, the extension collects chat conversation text from supported AI platforms:</p>
+  <table>
+    <tr>
+      <th>Data</th>
+      <th>When collected</th>
+      <th>Purpose</th>
+    </tr>
+    <tr>
+      <td>Google account name, email address, and profile picture</td>
+      <td>At sign-in via Google OAuth</td>
+      <td>Account identification. The email is hashed to a one-way anonymous ID before any data is stored or transmitted. The original name, email, and picture are never sent to our servers.</td>
+    </tr>
+    <tr>
+      <td>AI chat conversation text</td>
+      <td>Only when you have explicitly enabled data collection</td>
+      <td>Educational research into how students interact with AI chatbots.</td>
+    </tr>
+    <tr>
+      <td>Prompt text (Guidance mode only)</td>
+      <td>When you manually trigger the guidance check</td>
+      <td>Sent to our detection API to classify whether the prompt is answer-seeking and to generate a suggested rephrasing. The result and your response to the suggestion are logged for research.</td>
+    </tr>
+    <tr>
+      <td>Platform name and page URL</td>
+      <td>Alongside chat or guidance data</td>
+      <td>Research context (which AI platform was in use).</td>
+    </tr>
+  </table>
+  <p>We do <strong>not</strong> collect passwords, payment information, browsing history, data from sites other than the listed AI platforms, or any data while collection is disabled.</p>
+
+  <h2>Supported Platforms</h2>
+  <p>The extension only activates on the following AI chat platforms:</p>
   <ul>
-    <li>ChatGPT</li>
-    <li>Claude</li>
-    <li>Grok</li>
-    <li>Gemini</li>
-    <li>DeepSeek</li>
-    <li>Copilot</li>
-    <li>Perplexity</li>
-    <li>Poe</li>
-    <li>Doubao</li>
-    <li>HuggingChat</li>
+    <li>ChatGPT (chat.openai.com, chatgpt.com)</li>
+    <li>Claude (claude.ai)</li>
+    <li>Grok (grok.com, x.com/i/grok)</li>
+    <li>Microsoft Copilot (copilot.microsoft.com, bing.com/chat)</li>
+    <li>DeepSeek (chat.deepseek.com)</li>
+    <li>Doubao (doubao.com)</li>
+    <li>Gemini (gemini.google.com)</li>
+    <li>Perplexity (perplexity.ai)</li>
+    <li>Poe (poe.com)</li>
+    <li>HuggingChat (huggingface.co/chat)</li>
   </ul>
-  <p>We do not collect browsing history, passwords, personal files, or any data outside of AI chat conversations on the listed platforms.</p>
 
   <h2>Opt-In Only</h2>
-  <p>Data collection is strictly opt-in. The extension does not collect any data until you actively enable collection. You can toggle data collection on or off at any time through the extension popup.</p>
+  <p>Data collection is strictly opt-in. After signing in you must explicitly toggle the "Share Data" switch to begin collection. You can disable collection at any time from the extension popup or from the floating toggle on any supported page.</p>
 
   <h2>Anonymization</h2>
-  <p>All collected data is anonymized before storage. Personally identifiable information is removed so that conversation data cannot be traced back to individual users.</p>
+  <p>Your Google email is hashed using SHA-256 before it is used as a user identifier. The original email, name, and profile picture are stored only in your local browser and are never transmitted to our servers. All research data on our servers is keyed to this one-way hash and cannot be reversed to identify you.</p>
+
+  <h2>How Data Is Used</h2>
+  <ul>
+    <li>Academic research on AI-assisted learning at Carnegie Mellon University.</li>
+    <li>Aggregate analysis of prompting patterns — no individual user profiling.</li>
+    <li>The prompt guidance feature uses your prompt text to provide real-time feedback; this data is also retained for research.</li>
+  </ul>
 
   <h2>Data Storage and Security</h2>
-  <p>Collected data is transmitted over HTTPS and stored on secure research servers. Access to the data is restricted to authorized members of the research team.</p>
+  <p>Data is transmitted over HTTPS to research servers. Access is restricted to authorized members of the research team. Data is retained for the duration of the research project and deleted thereafter, or immediately upon your request.</p>
 
-  <h2>Your Controls</h2>
+  <h2>Permissions Used</h2>
+  <table>
+    <tr>
+      <th>Permission</th>
+      <th>Why it is needed</th>
+    </tr>
+    <tr>
+      <td><code>storage</code> / <code>unlimitedStorage</code></td>
+      <td>Store your login state, preferences, and locally-buffered chat logs.</td>
+    </tr>
+    <tr>
+      <td><code>identity</code></td>
+      <td>Google OAuth sign-in via Chrome's identity API.</td>
+    </tr>
+    <tr>
+      <td><code>activeTab</code></td>
+      <td>Read the active tab URL to determine which AI platform is open.</td>
+    </tr>
+    <tr>
+      <td><code>alarms</code></td>
+      <td>Schedule periodic background sync of locally-buffered logs to the server.</td>
+    </tr>
+    <tr>
+      <td>Host permissions (listed AI sites)</td>
+      <td>Inject content scripts that capture chat data and display the guidance UI on those specific sites only.</td>
+    </tr>
+  </table>
+
+  <h2>Your Rights and Controls</h2>
   <ul>
-    <li>You can enable or disable data collection at any time.</li>
-    <li>You can view your collected data through the extension.</li>
-    <li>You can request deletion of your data at any time by contacting the research team.</li>
-    <li>You can uninstall the extension at any time to stop all activity.</li>
+    <li><strong>View your data</strong> — click "View My Data" in the extension popup at any time.</li>
+    <li><strong>Delete your data</strong> — click "Delete All Data" in the popup to permanently remove all uploaded logs from our servers.</li>
+    <li><strong>Disable collection</strong> — toggle the switch off at any time; no further data is sent.</li>
+    <li><strong>Uninstall</strong> — removing the extension immediately stops all activity. Locally stored data is cleared with the extension.</li>
+    <li><strong>Sign out</strong> — signing out clears all locally stored credentials and preferences.</li>
   </ul>
 
   <h2>Third Parties</h2>
-  <p>We do not sell, trade, or share your data with third parties. Data is used solely for academic research purposes.</p>
+  <p>We do not sell, rent, or share your data with third parties. The only external service used is Google OAuth for authentication. Data is used solely for academic research.</p>
+
+  <h2>Children's Privacy</h2>
+  <p>PrompTutor is not directed at children under 13. We do not knowingly collect data from children under 13.</p>
 
   <h2>IRB Approval</h2>
-  <p>This research is subject to review by the Carnegie Mellon University Institutional Review Board (IRB). IRB approval is pending.</p>
+  <p>This research is conducted under oversight of the Carnegie Mellon University Institutional Review Board (IRB).</p>
 
   <h2>Changes to This Policy</h2>
-  <p>We may update this privacy policy from time to time. Any changes will be reflected on this page with an updated date.</p>
+  <p>We may update this policy from time to time. Significant changes will be communicated via the extension or this page. Continued use after changes constitutes acceptance of the updated policy.</p>
 
   <div class="contact">
     <h2 style="margin-top: 0;">Contact</h2>
-    <p>If you have questions or concerns about this privacy policy or your data, please contact:</p>
+    <p>Questions or data requests:</p>
     <p><strong>Email:</strong> <a href="mailto:EasonC13@cmu.edu">EasonC13@cmu.edu</a></p>
+    <p><strong>Institution:</strong> Carnegie Mellon University</p>
   </div>
 </body>
 </html>

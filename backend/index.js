@@ -94,6 +94,11 @@ app.get('/view', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'view.html'));
 });
 
+// Privacy policy
+app.get('/privacy', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'privacy-policy.html'));
+});
+
 // Register consent (must be called before uploading data)
 app.post('/api/consent', authenticate, async (req, res) => {
   const { agreed } = req.body;
