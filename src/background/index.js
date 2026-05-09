@@ -111,6 +111,7 @@ async function handleGoogleSignIn() {
 
   await chrome.storage.local.set({ user, accessToken: token, hasConsented: true });
   accessToken = token;
+  chrome.action.setBadgeText({ text: '' });
 
   console.log('[PrompTutor BG] Sign-in success:', user.email);
   return { user, accessToken: token };
@@ -133,7 +134,9 @@ async function trySilentRefresh() {
     }
   } catch {
     accessToken = null;
-    await chrome.storage.local.remove('accessToken');
+    await chrome.storage.local.remove(['accessToken', 'user']);
+    chrome.action.setBadgeText({ text: '!' });
+    chrome.action.setBadgeBackgroundColor({ color: '#e53935' });
   }
   return false;
 }

@@ -241,18 +241,11 @@
   
   // Listen for storage changes
   chrome.storage.onChanged.addListener((changes) => {
-    if (changes.enabled) {
-      isEnabled = changes.enabled.newValue;
-      updateUI();
-    }
-    if (changes.user) {
-      isLoggedIn = !!changes.user.newValue;
-      updateUI();
-    }
-    if (changes.mode) {
-      currentMode = changes.mode.newValue || 'collect';
-      updateUI();
-    }
+    if (changes.enabled) isEnabled = changes.enabled.newValue;
+    if (changes.user) isLoggedIn = !!changes.user.newValue;
+    if (changes.accessToken) isLoggedIn = isLoggedIn && !!changes.accessToken.newValue;
+    if (changes.mode) currentMode = changes.mode.newValue || 'collect';
+    if (changes.enabled || changes.user || changes.accessToken || changes.mode) updateUI();
   });
   
   // Sync timer

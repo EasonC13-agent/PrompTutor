@@ -85,6 +85,9 @@ async function init() {
   }
   
   if (stored.hasConsented) {
+    const sessionExpired = stored.hasConsented && !stored.accessToken;
+    const notice = document.getElementById('sessionExpiredNotice');
+    if (notice) notice.style.display = sessionExpired ? 'block' : 'none';
     showView('loginView');
   } else {
     showView('termsView');
