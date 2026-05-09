@@ -1,0 +1,5 @@
+* move sqlite db into folder
+* better route form validation
+* error when user needs to sign in again, token expired
+* make backend return new uploadedCount
+* more robust dom parsing

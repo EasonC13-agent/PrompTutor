@@ -72,6 +72,12 @@
         opacity: 0.6;
         pointer-events: none;
       }
+      .cc-sync-time {
+        font-size: 10px;
+        color: #aaa;
+        margin-left: 2px;
+        white-space: nowrap;
+      }
       .cc-switch {
         position: relative;
         width: 36px;
@@ -137,6 +143,7 @@
       <button class="cc-minimize" title="Minimize">−</button>
       <span class="cc-indicator"></span>
       <span class="cc-label">Share Data</span>
+      <span class="cc-sync-time" id="cc-sync-time"></span>
       <label class="cc-switch">
         <input type="checkbox" id="cc-enabled">
         <span class="cc-slider"></span>
@@ -150,6 +157,7 @@
   const toggle = document.getElementById('promptutor-toggle');
   const indicator = toggle.querySelector('.cc-indicator');
   const label = toggle.querySelector('.cc-label');
+  const syncTimeEl = document.getElementById('cc-sync-time');
   const checkbox = document.getElementById('cc-enabled');
   const minimizeBtn = toggle.querySelector('.cc-minimize');
   
@@ -247,6 +255,26 @@
     }
   });
   
+  // Sync timer
+  async function updateSyncTimer() {
+    if (!syncTimeEl) return;
+    try {
+      const alarm = await chrome.alarms.get('sync');
+      if (!alarm) { syncTimeEl.textContent = ''; return; }
+      const secLeft = Math.max(0, Math.round((alarm.scheduledTime - Date.now()) / 1000));
+      if (secLeft < 60) {
+        syncTimeEl.textContent = '(<1m)';
+      } else {
+        syncTimeEl.textContent = `(${Math.ceil(secLeft / 60)}m)`;
+      }
+    } catch (e) {
+      syncTimeEl.textContent = '';
+    }
+  }
+
+  updateSyncTimer();
+  setInterval(updateSyncTimer, 30000);
+
   // Initial load
   loadState();
   

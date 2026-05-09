@@ -1,87 +1,87 @@
 // Background service worker
 // Handles data collection, caching, and sync to backend
 
-// Config
+// ==================== CONFIG & STATE ====================
+
 const CONFIG = {
   apiEndpoint: 'https://chat-collector.eason.phd'
 };
 
-// State
 let isEnabled = false;
-let userAnonId = null; // Hashed email for anonymous identification
-let conversationCache = {}; // { url: { data: [], lastUpdate: timestamp } }
-let activeConversations = new Set(); // Currently open conversation URLs
+let accessToken = null;
+let conversationCache = {};
 
-// Load state on startup
-chrome.storage.local.get(['enabled', 'user', 'conversationCache', 'apiEndpoint'], (result) => {
+chrome.storage.local.get(['enabled', 'accessToken', 'conversationCache', 'apiEndpoint'], (result) => {
   isEnabled = result.enabled ?? false;
-  userAnonId = result.user?.anonId ?? null;
+  accessToken = result.accessToken ?? null;
   conversationCache = result.conversationCache ?? {};
   if (result.apiEndpoint) CONFIG.apiEndpoint = result.apiEndpoint;
-  console.log('[PrompTutor] Background loaded, enabled:', isEnabled, 'anonId:', userAnonId?.slice(0,8));
+  console.log('[PrompTutor] Background loaded, enabled:', isEnabled, 'authenticated:', !!accessToken);
 });
 
-// Listen for storage changes
+// ==================== LISTENERS ====================
+
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.enabled) {
     const wasEnabled = isEnabled;
     isEnabled = changes.enabled.newValue;
-    
-    // If toggled OFF, delete data for all active conversations
     if (wasEnabled && !isEnabled) {
       deleteActiveConversations();
-    }
-    // If toggled ON, sync cached data for active conversations
-    else if (!wasEnabled && isEnabled) {
-      syncActiveConversations();
+    } else if (!wasEnabled && isEnabled) {
+      syncAllCachedData();
     }
   }
-  if (changes.user) {
-    userAnonId = changes.user.newValue?.anonId ?? null;
+  if (changes.accessToken) {
+    accessToken = changes.accessToken.newValue ?? null;
   }
 });
 
-// Listen for messages from content scripts and popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[PrompTutor BG] Received message:', message.type);
-  
+
   switch (message.type) {
     case 'CHAT_DATA':
       handleChatData(message.payload, sender.tab?.url);
       break;
-      
-    case 'CONVERSATION_OPENED':
-      handleConversationOpened(message.url);
-      break;
-      
-    case 'CONVERSATION_CLOSED':
-      handleConversationClosed(message.url);
-      break;
-      
+
     case 'TOGGLE_ENABLED':
-      // Handled by storage change listener
       break;
-      
+
     case 'GET_STATUS':
-      sendResponse({ 
-        enabled: isEnabled, 
-        pendingCount: Object.keys(conversationCache).reduce((sum, url) => 
-          sum + (conversationCache[url]?.data?.length || 0), 0)
+      sendResponse({
+        enabled: isEnabled,
+        pendingCount: Object.keys(conversationCache).reduce((sum, url) =>
+          sum + (conversationCache[url]?.messages?.length || 0), 0)
       });
       break;
-      
+
     case 'SYNC_NOW':
-      userAnonId = message.userAnonId || userAnonId;
       syncAllCachedData().then(result => sendResponse(result));
-      return true; // Keep channel open for async response
+      return true;
 
     case 'GOOGLE_SIGN_IN':
       handleGoogleSignIn().then(result => sendResponse(result)).catch(err => sendResponse({ error: err.message }));
-      return true; // Keep channel open for async response
+      return true;
+
+    case 'DETECT':
+      handleDetect(message).then(result => sendResponse(result)).catch(() => sendResponse(null));
+      return true;
+
+    case 'LOG_GUIDANCE':
+      handleLogGuidance(message);
+      break;
   }
 });
 
-// Handle Google Sign-In via launchWebAuthFlow (runs in background, survives popup close)
+chrome.alarms.create('sync', { periodInMinutes: 5 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'sync' && isEnabled && accessToken) {
+    syncAllCachedData();
+  }
+});
+
+// ==================== AUTH ====================
+
 async function handleGoogleSignIn() {
   const manifest = chrome.runtime.getManifest();
   const clientId = manifest.oauth2.client_id;
@@ -91,192 +91,157 @@ async function handleGoogleSignIn() {
 
   console.log('[PrompTutor BG] Starting launchWebAuthFlow, redirect:', redirectUrl);
 
-  const responseUrl = await chrome.identity.launchWebAuthFlow({
-    url: authUrl,
-    interactive: true
+  const responseUrl = await chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: true });
+
+  if (chrome.runtime.lastError || !responseUrl) {
+    throw new Error(chrome.runtime.lastError?.message || 'Authentication failed');
+  }
+
+  const token = new URL(responseUrl.replace('#', '?')).searchParams.get('access_token');
+  if (!token) throw new Error('No token received from Google');
+
+  const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${token}` }
   });
-
-  console.log('[PrompTutor BG] Auth response URL:', responseUrl?.slice(0, 80));
-
-  // Extract access token from fragment
-  const urlParams = new URL(responseUrl.replace('#', '?')).searchParams;
-  const token = urlParams.get('access_token');
-
-  if (!token) {
-    throw new Error('No token received from Google');
-  }
-
-  // Get user info
-  const userInfoRes = await fetch(
-    'https://www.googleapis.com/oauth2/v3/userinfo',
-    { headers: { 'Authorization': `Bearer ${token}` } }
-  );
-
-  if (!userInfoRes.ok) {
-    throw new Error('Failed to get user info');
-  }
+  if (!userInfoRes.ok) throw new Error('Failed to get user info');
 
   const userInfo = await userInfoRes.json();
 
-  // Hash email for anonymous ID
-  const encoder = new TextEncoder();
-  const data = encoder.encode(userInfo.email.toLowerCase().trim());
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const emailHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const user = { email: userInfo.email, name: userInfo.name, picture: userInfo.picture };
 
-  const user = {
-    email: userInfo.email,
-    name: userInfo.name,
-    picture: userInfo.picture,
-    anonId: emailHash,
-  };
+  await chrome.storage.local.set({ user, accessToken: token, hasConsented: true });
+  accessToken = token;
 
-  // Save to storage immediately (popup may have closed during auth flow)
-  await chrome.storage.local.set({
-    user,
-    accessToken: token,
-    hasConsented: true,
-  });
-  userAnonId = emailHash;
-
-  console.log('[PrompTutor BG] Sign-in success, saved to storage:', user.email);
-
+  console.log('[PrompTutor BG] Sign-in success:', user.email);
   return { user, accessToken: token };
 }
 
-// Handle incoming chat data
+async function trySilentRefresh() {
+  const manifest = chrome.runtime.getManifest();
+  const clientId = manifest.oauth2.client_id;
+  const redirectUrl = chrome.identity.getRedirectURL();
+  const scopes = manifest.oauth2.scopes.join(' ');
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&response_type=token&redirect_uri=${encodeURIComponent(redirectUrl)}&scope=${encodeURIComponent(scopes)}`;
+
+  try {
+    const responseUrl = await chrome.identity.launchWebAuthFlow({ url: authUrl, interactive: false });
+    const token = new URL(responseUrl.replace('#', '?')).searchParams.get('access_token');
+    if (token) {
+      accessToken = token;
+      await chrome.storage.local.set({ accessToken: token });
+      return true;
+    }
+  } catch {
+    accessToken = null;
+    await chrome.storage.local.remove('accessToken');
+  }
+  return false;
+}
+
+function authHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+  return headers;
+}
+
+async function backendFetch(url, options = {}) {
+  const res = await fetch(url, { ...options, headers: { ...authHeaders(), ...options.headers } });
+  if (res.status === 401) {
+    const refreshed = await trySilentRefresh();
+    if (refreshed) {
+      return fetch(url, { ...options, headers: { ...authHeaders(), ...options.headers } });
+    }
+  }
+  return res;
+}
+
+// ==================== CACHE ====================
+
 function handleChatData(payload, tabUrl) {
-  console.log('[PrompTutor BG] handleChatData called, isEnabled:', isEnabled, 'userAnonId:', userAnonId?.slice(0,8));
-  
   const url = payload.url || tabUrl;
-  if (!url) {
-    console.log('[PrompTutor BG] No URL, skipping');
-    return;
-  }
-  
-  // Extract conversation base URL (e.g., https://chatgpt.com/c/abc123)
+  if (!url) return;
+
   const conversationUrl = getConversationUrl(url);
-  
+  const chatId = getChatId(conversationUrl);
+
   console.log('[PrompTutor BG] Captured:', payload.platform, conversationUrl);
-  
-  // Cache the data
+
+  if (!isEnabled || !accessToken) return;
+
+  const messages = payload.messages || [];
   if (!conversationCache[conversationUrl]) {
-    conversationCache[conversationUrl] = { data: [], lastUpdate: null };
+    conversationCache[conversationUrl] = { messages: [], lastUpdate: null };
   }
-  
-  conversationCache[conversationUrl].data.push({
-    id: self.crypto.randomUUID(),
-    capturedAt: new Date().toISOString(),
-    ...payload,
-    url: conversationUrl
-  });
+
+  const seenHashes = new Set(conversationCache[conversationUrl].messages.map(m => m.messageHash).filter(Boolean));
+  let added = 0;
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role !== 'user' || !msg.content) continue;
+    const next = messages[i + 1];
+    const assistantResponse = next?.role === 'assistant' ? next.content : null;
+    if (assistantResponse) i++;
+
+    if (msg.hash && seenHashes.has(msg.hash)) continue;
+    if (msg.hash) seenHashes.add(msg.hash);
+
+    conversationCache[conversationUrl].messages.push({
+      platform: payload.platform,
+      url: conversationUrl,
+      chatId,
+      messageText: msg.content,
+      assistantResponse,
+      messageHash: msg.hash || null,
+      capturedAt: msg.timestamp ? new Date(msg.timestamp).toISOString() : new Date().toISOString(),
+    });
+    added++;
+  }
+
+  if (added === 0) return;
   conversationCache[conversationUrl].lastUpdate = Date.now();
-  
-  // Persist cache
+
   chrome.storage.local.set({ conversationCache });
-  
-  // If enabled, sync immediately
-  if (isEnabled && userAnonId) {
-    syncConversation(conversationUrl);
+}
+
+function getConversationUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const match = parsed.pathname.match(/^\/(?:c|g|chat)\/[^\/]+/);
+    if (match) return `${parsed.origin}${match[0]}`;
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url;
   }
 }
 
-// Handle conversation opened
-function handleConversationOpened(url) {
-  const conversationUrl = getConversationUrl(url);
-  activeConversations.add(conversationUrl);
-  console.log('[PrompTutor] Conversation opened:', conversationUrl);
-  
-  // If enabled and we have cached data, sync it
-  if (isEnabled && userAnonId && conversationCache[conversationUrl]?.data?.length > 0) {
-    syncConversation(conversationUrl);
+function getChatId(conversationUrl) {
+  try {
+    const match = new URL(conversationUrl).pathname.match(/^\/(?:c|g|chat)\/([^\/]+)/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
   }
 }
 
-// Handle conversation closed
-async function handleConversationClosed(url) {
-  const conversationUrl = getConversationUrl(url);
-  activeConversations.delete(conversationUrl);
-  console.log('[PrompTutor] Conversation closed:', conversationUrl);
-  
-  // If toggle is OFF, delete this conversation's data from server
-  if (!isEnabled && userAnonId) {
-    await deleteConversation(conversationUrl);
-  }
-}
+// ==================== SYNC ====================
 
-// Delete data for all active conversations (when toggle turned OFF)
 async function deleteActiveConversations() {
-  console.log('[PrompTutor] Deleting active conversations data...');
-  
-  for (const url of activeConversations) {
+  for (const url of Object.keys(conversationCache)) {
     await deleteConversation(url);
-  }
-  
-  // Also clear local cache for active conversations
-  for (const url of activeConversations) {
     delete conversationCache[url];
   }
   chrome.storage.local.set({ conversationCache });
 }
 
-// Sync data for all active conversations (when toggle turned ON)
-async function syncActiveConversations() {
-  console.log('[PrompTutor] Syncing active conversations...');
-  
-  for (const url of activeConversations) {
-    if (conversationCache[url]?.data?.length > 0) {
-      await syncConversation(url);
-    }
-  }
-}
-
-// Sync a single conversation's data
-async function syncConversation(conversationUrl) {
-  const cache = conversationCache[conversationUrl];
-  if (!cache?.data?.length || !userAnonId) return;
-  
-  try {
-    const response = await fetch(`${CONFIG.apiEndpoint}/api/chats`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': userAnonId
-      },
-      body: JSON.stringify({ logs: cache.data })
-    });
-    
-    if (response.ok) {
-      console.log('[PrompTutor] Synced', cache.data.length, 'items for', conversationUrl);
-      // Clear synced data
-      conversationCache[conversationUrl].data = [];
-      chrome.storage.local.set({ conversationCache });
-      return { success: true, synced: cache.data.length };
-    } else {
-      console.error('[PrompTutor] Sync failed:', response.status);
-      return { success: false, error: `HTTP ${response.status}` };
-    }
-  } catch (e) {
-    console.error('[PrompTutor] Sync error:', e);
-    return { success: false, error: e.message };
-  }
-}
-
-// Delete a conversation's data from server
 async function deleteConversation(conversationUrl) {
-  if (!userAnonId) return;
-  
+  if (!accessToken) return;
+
   try {
-    const response = await fetch(`${CONFIG.apiEndpoint}/api/conversation`, {
+    const response = await backendFetch(`${CONFIG.apiEndpoint}/api/conversation`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': userAnonId
-      },
       body: JSON.stringify({ url: conversationUrl })
     });
-    
     if (response.ok) {
       const result = await response.json();
       console.log('[PrompTutor] Deleted', result.deleted, 'items for', conversationUrl);
@@ -288,38 +253,33 @@ async function deleteConversation(conversationUrl) {
   }
 }
 
-// Sync all cached data
 async function syncAllCachedData() {
-  const allData = [];
-  
+  const allMessages = [];
+
   for (const url in conversationCache) {
-    if (conversationCache[url]?.data?.length > 0) {
-      allData.push(...conversationCache[url].data);
+    if (conversationCache[url]?.messages?.length > 0) {
+      allMessages.push(...conversationCache[url].messages);
     }
   }
-  
-  if (allData.length === 0) {
-    return { success: true, synced: 0 };
-  }
-  
+
+  if (allMessages.length === 0) return { success: true, synced: 0 };
+
   try {
-    const response = await fetch(`${CONFIG.apiEndpoint}/api/chats`, {
+    const response = await backendFetch(`${CONFIG.apiEndpoint}/api/message-logs/batch`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': userAnonId
-      },
-      body: JSON.stringify({ logs: allData })
+      body: JSON.stringify({ messages: allMessages })
     });
-    
+
     if (response.ok) {
-      // Clear all caches
+      const data = await response.json();
       for (const url in conversationCache) {
-        conversationCache[url].data = [];
+        conversationCache[url].messages = [];
       }
-      chrome.storage.local.set({ conversationCache });
-      console.log('[PrompTutor] Synced', allData.length, 'items');
-      return { success: true, synced: allData.length };
+      const storageUpdate = { conversationCache };
+      if (data.total != null) storageUpdate.uploadedCount = data.total;
+      chrome.storage.local.set(storageUpdate);
+      console.log('[PrompTutor] Synced', allMessages.length, 'messages, total:', data.total);
+      return { success: true, synced: allMessages.length, total: data.total };
     } else {
       console.error('[PrompTutor] Sync failed:', response.status);
       return { success: false, error: `HTTP ${response.status}` };
@@ -330,34 +290,29 @@ async function syncAllCachedData() {
   }
 }
 
-// Extract conversation URL from full URL
-function getConversationUrl(url) {
+// ==================== GUIDANCE ====================
+
+async function handleDetect({ message, platform, url }) {
   try {
-    const parsed = new URL(url);
-    // ChatGPT: /c/xxxxx or /g/xxxxx
-    // Claude: /chat/xxxxx
-    const match = parsed.pathname.match(/^\/(?:c|g|chat)\/[^\/]+/);
-    if (match) {
-      return `${parsed.origin}${match[0]}`;
-    }
-    // Return base URL if no conversation ID
-    return `${parsed.origin}${parsed.pathname}`;
-  } catch {
-    return url;
+    const response = await backendFetch(`${CONFIG.apiEndpoint}/api/detect`, {
+      method: 'POST',
+      body: JSON.stringify({ message, platform, context: { url } }),
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (e) {
+    console.error('[PrompTutor] Detect proxy error:', e);
+    return null;
   }
 }
 
-// Periodic sync attempt - set up after a delay to ensure APIs are ready
-setTimeout(() => {
+async function handleLogGuidance(data) {
   try {
-    chrome.alarms.create('sync', { periodInMinutes: 5 });
-    chrome.alarms.onAlarm.addListener((alarm) => {
-      if (alarm.name === 'sync' && isEnabled && userAnonId) {
-        syncAllCachedData();
-      }
+    await backendFetch(`${CONFIG.apiEndpoint}/api/guidance-log`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
-    console.log('[PrompTutor] Alarms set up');
   } catch (e) {
-    console.log('[PrompTutor] Alarms not available:', e.message);
+    console.error('[PrompTutor] Guidance log proxy error:', e);
   }
-}, 100);
+}

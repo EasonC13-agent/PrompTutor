@@ -34,6 +34,7 @@ const pendingCount = document.getElementById('pendingCount');
 const uploadedCount = document.getElementById('uploadedCount');
 const syncBtn = document.getElementById('syncBtn');
 const viewDataBtn = document.getElementById('viewDataBtn');
+const adminBtn = document.getElementById('adminBtn');
 const deleteDataBtn = document.getElementById('deleteDataBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const userName = document.getElementById('userName');
@@ -65,7 +66,7 @@ async function init() {
   
   // Load stored state
   const stored = await chrome.storage.local.get([
-    'user', 'accessToken', 'hasConsented', 'enabled', 'pendingData', 'mode'
+    'user', 'accessToken', 'hasConsented', 'enabled', 'pendingData', 'mode', 'uploadedCount'
   ]);
   
   if (stored.user && stored.accessToken) {
@@ -78,7 +79,7 @@ async function init() {
     if (modeRadio) modeRadio.checked = true;
 
     // User is logged in locally - show main view
-    updateMainView(stored.enabled ?? false, stored.pendingData?.length ?? 0);
+    updateMainView(stored.enabled ?? false, stored.pendingData?.length ?? 0, stored.uploadedCount ?? '—');
     showView('mainView');
     return;
   }
@@ -156,7 +157,7 @@ googleLoginBtn.addEventListener('click', async () => {
 });
 
 // Update main view with current state
-function updateMainView(enabled, pending) {
+function updateMainView(enabled, pending, uploaded) {
   userName.textContent = currentUser?.name || 'User';
   userEmail.textContent = currentUser?.email || '';
   userAvatar.src = currentUser?.picture || '';
@@ -165,20 +166,24 @@ function updateMainView(enabled, pending) {
   status.className = `status ${enabled ? 'enabled' : 'disabled'}`;
   statusText.textContent = enabled ? 'Collecting' : 'Disabled';
   
-  // Get counts
+  uploadedCount.textContent = uploaded ?? '—';
   updateLocalCount();
-  fetchUploadedCount();
+  if (uploaded == null) fetchUploadedCount();
+  checkAdmin();
 }
 
 // Fetch uploaded count from server
 async function fetchUploadedCount() {
+  if (!accessToken) return;
   try {
     const response = await fetch(`${CONFIG.apiEndpoint}/api/my-chats?limit=1`, {
-      headers: { 'X-User-Id': currentUser?.anonId }
+      headers: { Authorization: `Bearer ${accessToken}` }
     });
     if (response.ok) {
       const data = await response.json();
-      uploadedCount.textContent = data.total || 0;
+      const total = data.total || 0;
+      uploadedCount.textContent = total;
+      chrome.storage.local.set({ uploadedCount: total });
     }
   } catch (error) {
     console.error('Failed to fetch count:', error);
@@ -186,13 +191,30 @@ async function fetchUploadedCount() {
   }
 }
 
+// Check admin status by probing the admin endpoint
+async function checkAdmin() {
+  if (!accessToken) return;
+  try {
+    const res = await fetch(`${CONFIG.apiEndpoint}/api/admin/stats`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    adminBtn.style.display = res.ok ? 'block' : 'none';
+  } catch {
+    adminBtn.style.display = 'none';
+  }
+}
+
+adminBtn.addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('src/admin/admin.html') });
+});
+
 // Update local (pending) count from cache
 async function updateLocalCount() {
   const stored = await chrome.storage.local.get(['conversationCache']);
   const cache = stored.conversationCache || {};
   let total = 0;
   for (const url in cache) {
-    total += cache[url]?.data?.length || 0;
+    total += cache[url]?.messages?.length || 0;
   }
   pendingCount.textContent = total;
 }
@@ -220,7 +242,10 @@ syncBtn.addEventListener('click', async () => {
     if (response?.success) {
       syncBtn.textContent = `Synced ${response.synced} logs!`;
       pendingCount.textContent = '0';
-      fetchUploadedCount();
+      if (response.total != null) {
+        uploadedCount.textContent = response.total;
+        chrome.storage.local.set({ uploadedCount: response.total });
+      }
     } else {
       syncBtn.textContent = `Error: ${response?.error || 'Unknown'}`;
     }
@@ -234,10 +259,7 @@ syncBtn.addEventListener('click', async () => {
 
 // View data
 viewDataBtn.addEventListener('click', () => {
-  // Open a new tab with user's data view
-  chrome.tabs.create({ 
-    url: `${CONFIG.apiEndpoint}/view?userId=${currentUser?.anonId}` 
-  });
+  chrome.tabs.create({ url: chrome.runtime.getURL('src/view/view.html') });
 });
 
 // Delete all data
@@ -254,13 +276,14 @@ deleteDataBtn.addEventListener('click', async () => {
   try {
     const response = await fetch(`${CONFIG.apiEndpoint}/api/my-chats`, {
       method: 'DELETE',
-      headers: { 'X-User-Id': currentUser?.anonId }
+      headers: { Authorization: `Bearer ${accessToken}` }
     });
     
     if (response.ok) {
       const data = await response.json();
       alert(`Deleted ${data.deleted} logs`);
       uploadedCount.textContent = '0';
+      chrome.storage.local.set({ uploadedCount: 0 });
     } else {
       alert('Delete failed. Please try again.');
     }

@@ -32,3 +32,5 @@ coverage/
 node_modules/
 .test-chrome-profile/
 backend/.env
+
+*.db*

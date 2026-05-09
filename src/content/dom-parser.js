@@ -7,58 +7,42 @@
   // Selectors with fallbacks (try in order)
   const SELECTORS = {
     chatgpt: {
-      // Message containers
       messageContainer: [
         '[data-message-author-role]',
-        '[data-testid^="conversation-turn"]',
-        '.group\\/conversation-turn'
       ],
-      // User messages
       userMessage: [
         '[data-message-author-role="user"]',
-        '[data-testid="conversation-turn-user"]'
       ],
-      // Assistant messages  
       assistantMessage: [
         '[data-message-author-role="assistant"]',
-        '[data-testid="conversation-turn-assistant"]'
       ],
-      // Message content
       messageContent: [
-        '.markdown',
-        '.prose',
-        '[data-message-content]'
+        '.markdown',                                      // assistant responses
+        '[data-testid="collapsible-user-message-content"]', // user messages (collapsible)
+        '[data-message-content]',
       ],
-      // Chat container (for MutationObserver)
       chatContainer: [
         'main',
-        '[role="main"]',
-        '.flex-1.overflow-hidden'
       ]
     },
     claude: {
       messageContainer: [
         '[data-test-render-count]',
-        '[data-testid="user-message"]',
-        '[data-testid="assistant-message"]',
-        '.font-claude-response'
       ],
       userMessage: [
-        '[data-testid="user-message"]',
-        '.font-user-message'
+        '[data-user-message-bubble="true"]',
       ],
       assistantMessage: [
-        '[data-testid="assistant-message"]', 
+        '[data-is-streaming]',
         '.font-claude-response'
       ],
       messageContent: [
-        '.font-claude-response-body',
-        '.font-user-message',
-        '.prose',
-        '.markdown',
+        '[data-testid="user-message"]',
+        '.font-claude-response',
         'p'
       ],
       chatContainer: [
+        '[data-autoscroll-container="true"]',
         'main',
         '[role="main"]'
       ]
@@ -323,9 +307,10 @@
   let observer = null;
   let scanInterval = null;
   let debounceTimer = null;
-  let lastContentLength = 0; // Track content length to detect streaming
-  const seenMessages = new Set(); // Track seen message hashes
-  const DEBOUNCE_MS = 2000; // Wait 2 seconds after last change (for streaming)
+  let lastContentLength = 0;
+  let isEnabled = false;
+  const seenMessages = new Set();
+  const DEBOUNCE_MS = 300;
   
   // Detect platform
   function detectPlatform() {
@@ -402,7 +387,19 @@
       let contentEl;
       
       // Platform-specific role detection
-      if (platform === 'deepseek') {
+      if (platform === 'claude') {
+        const userBubble = container.querySelector('[data-user-message-bubble="true"]');
+        const assistantDiv = container.querySelector('[data-is-streaming]') || container.querySelector('.font-claude-response');
+        if (userBubble) {
+          role = 'user';
+          contentEl = userBubble.querySelector('[data-testid="user-message"]') || userBubble;
+        } else if (assistantDiv) {
+          role = 'assistant';
+          contentEl = assistantDiv.classList.contains('font-claude-response') ? assistantDiv : assistantDiv.querySelector('.font-claude-response') || assistantDiv;
+        } else {
+          continue;
+        }
+      } else if (platform === 'deepseek') {
         // DeepSeek: assistant messages have .ds-markdown child, user messages don't
         const hasMarkdown = container.querySelector('.ds-markdown');
         role = hasMarkdown ? 'assistant' : 'user';
@@ -512,9 +509,6 @@
         payload: {
           ...payload,
           timestamp: Date.now(),
-          platform: payload.platform,
-          url: payload.url,
-          data: payload
         }
       }, (response) => {
         // Check for error in callback
@@ -531,45 +525,85 @@
     }
   }
   
+  // Check if AI is currently streaming a response
+  function isStreaming() {
+    if (platform === 'claude') return !!document.querySelector('[data-is-streaming="true"]');
+    // ChatGPT: data-stream-active="" during stream, data-stream-active="null" when done
+    if (platform === 'chatgpt') return !!document.querySelector('[data-stream-active]:not([data-stream-active="null"])');
+    // Fallback: detect via content length change
+    const len = document.body.innerText.length;
+    if (len !== lastContentLength) { lastContentLength = len; return true; }
+    return false;
+  }
+
+  // Returns true if this mutation signals streaming just ended
+  function isStreamDoneSignal(m) {
+    if (platform === 'claude' && m.attributeName === 'data-is-streaming') {
+      return m.target.getAttribute('data-is-streaming') === 'false';
+    }
+    if (platform === 'chatgpt' && m.attributeName === 'data-stream-active') {
+      return m.target.getAttribute('data-stream-active') === 'null';
+    }
+    return false;
+  }
+
+  function scheduleCheck() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (isStreaming()) {
+        debounceTimer = setTimeout(scheduleCheck, 500);
+      } else {
+        checkForChanges();
+      }
+    }, DEBOUNCE_MS);
+  }
+
   // Set up MutationObserver
-  function setupObserver() {
+  function setupObserver(attempt = 0) {
     const sel = SELECTORS[platform];
     if (!sel) return;
-    
+
     const container = $(sel.chatContainer);
     if (!container) {
-      console.log('[PrompTutor DOM] Chat container not found, retrying...');
-      setTimeout(setupObserver, 1000);
+      if (attempt < 10) setTimeout(() => setupObserver(attempt + 1), 1000);
       return;
     }
-    
-    // Disconnect existing observer
+
     if (observer) observer.disconnect();
-    
+
+    // No characterData — typing in input fires it constantly and we don't need it.
+    // Streaming end is detected via attribute changes instead.
+    const observerOptions = { childList: true, subtree: true };
+    if (platform === 'claude') {
+      observerOptions.attributes = true;
+      observerOptions.attributeFilter = ['data-is-streaming'];
+    } else if (platform === 'chatgpt') {
+      observerOptions.attributes = true;
+      observerOptions.attributeFilter = ['data-stream-active'];
+    }
+
     observer = new MutationObserver((mutations) => {
-      // Debounce - wait for streaming to complete
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        // Check if content is still changing (streaming)
-        const currentLength = document.body.innerText.length;
-        if (currentLength !== lastContentLength) {
-          lastContentLength = currentLength;
-          // Content still changing, wait more
-          debounceTimer = setTimeout(() => checkForChanges(), DEBOUNCE_MS);
-        } else {
-          // Content stable, process
-          checkForChanges();
+      for (const m of mutations) {
+        if (isStreamDoneSignal(m)) {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(checkForChanges, 100);
+          return;
         }
-      }, DEBOUNCE_MS);
+      }
+      // Skip if all mutations are from our own overlay UI (including its initial insertion)
+      const overlay = document.getElementById('promptutor-overlay');
+      const fromOverlay = overlay && mutations.every(m => {
+        if (overlay.contains(m.target) || m.target === overlay) return true;
+        const allAdded = Array.from(m.addedNodes).every(n => n === overlay || overlay.contains(n));
+        const allRemoved = Array.from(m.removedNodes).every(n => n === overlay || overlay.contains(n));
+        return (m.addedNodes.length || m.removedNodes.length) && allAdded && allRemoved;
+      });
+      if (fromOverlay) return;
+      scheduleCheck();
     });
-    
-    observer.observe(container, {
-      childList: true,
-      subtree: true,
-      characterData: true
-    });
-    
-    console.log('[PrompTutor DOM] Observer attached to', container.tagName);
+
+    observer.observe(container, observerOptions);
+    console.log('[PrompTutor DOM] Observer attached to', container.tagName, `(attempt ${attempt})`);
   }
   
   // Periodic scan as backup
@@ -581,34 +615,55 @@
     }, 10000); // Every 10 seconds (backup only)
   }
   
+  function startCollecting() {
+    seenMessages.clear();
+    lastSnapshot = null;
+    lastSnapshotHash = null;
+    checkForChanges();
+    setupObserver();
+    startPeriodicScan();
+  }
+
+  function stopCollecting() {
+    if (observer) { observer.disconnect(); observer = null; }
+    if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+    clearTimeout(debounceTimer);
+  }
+
   // Initialize
   function init() {
     console.log('[PrompTutor DOM] Initializing for', platform);
-    
-    // Initial scan
-    setTimeout(() => {
-      checkForChanges();
-      setupObserver();
-      startPeriodicScan();
-    }, 2000); // Wait for page to load
-    
-    // Re-init on navigation (SPA)
-    let lastUrl = window.location.href;
-    setInterval(() => {
-      if (window.location.href !== lastUrl) {
-        console.log('[PrompTutor DOM] URL changed, reinitializing');
-        lastUrl = window.location.href;
+
+    chrome.storage.local.get(['enabled', 'accessToken'], (stored) => {
+      isEnabled = !!(stored.enabled && stored.accessToken);
+      if (isEnabled) setTimeout(startCollecting, 500);
+    });
+
+    chrome.storage.onChanged.addListener((changes) => {
+      const prevEnabled = isEnabled;
+      if (changes.enabled) isEnabled = changes.enabled.newValue;
+      if (changes.accessToken) isEnabled = isEnabled && !!changes.accessToken.newValue;
+
+      if (!prevEnabled && isEnabled) {
+        startCollecting();
+      } else if (prevEnabled && !isEnabled) {
+        stopCollecting();
+      }
+    });
+
+    // Re-init on SPA navigation
+    navigation.addEventListener('navigate', () => {
+      if (!isEnabled) return;
+      setTimeout(() => {
         seenMessages.clear();
         lastSnapshot = null;
         lastSnapshotHash = null;
-        setTimeout(() => {
-          checkForChanges();
-          setupObserver();
-        }, 1000);
-      }
-    }, 1000);
+        checkForChanges();
+        setupObserver();
+      }, 1000);
+    });
   }
-  
+
   // Start
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

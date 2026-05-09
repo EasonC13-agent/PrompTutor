@@ -4,19 +4,15 @@
 (function() {
   'use strict';
 
-  const API_ENDPOINT = 'https://chat-collector.eason.phd';
   let mode = 'collect';
-  let userAnonId = null;
   let isProcessing = false;
 
-  chrome.storage.local.get(['mode', 'user', 'enabled'], (result) => {
+  chrome.storage.local.get(['mode', 'enabled'], (result) => {
     mode = result.mode || 'collect';
-    userAnonId = result.user?.anonId || null;
   });
 
   chrome.storage.onChanged.addListener((changes) => {
     if (changes.mode) mode = changes.mode.newValue || 'collect';
-    if (changes.user) userAnonId = changes.user.newValue?.anonId || null;
   });
 
   function getPlatform() {
@@ -124,22 +120,15 @@
     el.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
+  // Route API calls through the background service worker to avoid needing host_permissions
   async function detectAnswerSeeking(message) {
     try {
-      const response = await fetch(`${API_ENDPOINT}/api/detect`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userAnonId || 'anonymous'
-        },
-        body: JSON.stringify({
-          message,
-          platform: getPlatform(),
-          context: { url: location.href }
-        })
+      return await chrome.runtime.sendMessage({
+        type: 'DETECT',
+        message,
+        platform: getPlatform(),
+        url: location.href,
       });
-      if (!response.ok) return null;
-      return await response.json();
     } catch (e) {
       console.error('[PrompTutor] Detection error:', e);
       return null;
@@ -148,17 +137,11 @@
 
   async function logGuidance(data) {
     try {
-      await fetch(`${API_ENDPOINT}/api/guidance-log`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id': userAnonId || 'anonymous'
-        },
-        body: JSON.stringify({
-          platform: getPlatform(),
-          url: location.href,
-          ...data
-        })
+      chrome.runtime.sendMessage({
+        type: 'LOG_GUIDANCE',
+        platform: getPlatform(),
+        url: location.href,
+        ...data,
       });
     } catch (e) {
       console.error('[PrompTutor] Guidance log error:', e);
