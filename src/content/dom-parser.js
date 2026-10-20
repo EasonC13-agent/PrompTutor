@@ -309,6 +309,22 @@
   let debounceTimer = null;
   let lastContentLength = 0;
   let isEnabled = false;
+  let privacyState = {};
+  let activeConversation = PROMPTUTOR_PRIVACY.conversationUrl(location.href);
+  let previousRoots = [];
+  let staleRoots = [];
+  function refreshRoute() {
+    const current = PROMPTUTOR_PRIVACY.conversationUrl(location.href);
+    if (current === activeConversation) return;
+    activeConversation = current;
+    staleRoots = previousRoots;
+    previousRoots = [];
+    lastSnapshot = null;
+    lastSnapshotHash = null;
+    stopCollecting();
+    isEnabled = PROMPTUTOR_PRIVACY.allowed(privacyState, location.href);
+    if (isEnabled) startCollecting();
+  }
   const seenMessages = new Set();
   const DEBOUNCE_MS = 300;
   
@@ -368,7 +384,8 @@
     // Clone to avoid modifying original
     const clone = el.cloneNode(true);
     // Remove code block copy buttons, etc
-    clone.querySelectorAll('button, [aria-hidden="true"]').forEach(e => e.remove());
+    clone.querySelectorAll('button, [aria-hidden="true"], script, style, [contenteditable="true"]').forEach(e => e.remove());
+    clone.querySelectorAll('p, pre, li, h1, h2, h3, blockquote, br').forEach(e => e.appendChild(document.createTextNode('\n')));
     return clone.textContent?.trim() || '';
   }
   
@@ -377,6 +394,89 @@
     const sel = SELECTORS[platform];
     if (!sel) return [];
     
+    if (platform === 'chatgpt' || platform === 'claude') {
+      const userSelector = platform === 'chatgpt' ? '[data-message-author-role="user"]' : '[data-user-message-bubble="true"], [data-testid="user-message"], .font-user-message';
+      const assistantSelector = platform === 'chatgpt' ? '[data-message-author-role="assistant"]' : '[data-testid="assistant-message"], .font-claude-response';
+      const roots = `${userSelector}, ${assistantSelector}`;
+      const scope = document.querySelector('main, [role="main"]');
+      if (!scope) return [];
+      // Anonymous ChatGPT uses labeled list turns, not data-message-author-role.
+      // Only direct children of the observed Conversation list are turn roots;
+      // role labels plus assistant DIL content avoid treating arbitrary li as replies.
+      if (platform === 'chatgpt' && !scope.querySelector(roots)) {
+        return Array.from(scope.querySelectorAll('ol[aria-label="Conversation"] > li'))
+          .filter(el => !el.closest('[contenteditable="true"], [aria-hidden="true"]'))
+          .map(el => {
+            const text = extractText(el);
+            let role, content;
+            if (text.startsWith('You said:')) {
+              role = 'user';
+              content = text.slice('You said:'.length).trim();
+            } else if (text.startsWith('ChatGPT said:')) {
+              role = 'assistant';
+              content = extractText(el.querySelector('section[aria-label="DIL content"]'));
+            } else return null;
+            return content ? { role, content, hash: hashString(`${role}:${content}`), timestamp: Date.now() } : null;
+          }).filter(Boolean);
+      }
+      return Array.from(scope.querySelectorAll(roots))
+        .filter(el => !el.parentElement.closest(roots) && !el.closest('[contenteditable="true"], [aria-hidden="true"]'))
+        .map(el => {
+          const role = el.matches(userSelector) ? 'user' : 'assistant';
+          const body = platform === 'chatgpt'
+            ? el.querySelector('[data-message-content], .whitespace-pre-wrap, .markdown, .prose')
+            : el.querySelector('.font-claude-response-body');
+          const content = extractText(body || el);
+          return { role, content, hash: hashString(`${role}:${content}`), timestamp: Date.now() };
+        }).filter(m => m.content);
+    }
+    // Gemini/Grok: strictly role-labelled roots only. An element whose role is not
+    // positively identified is skipped rather than guessed as an assistant reply.
+    // Selectors are reconstructed from first-party UI conventions, not live captures.
+    if (platform === 'gemini' || platform === 'grok') {
+      const gemini = platform === 'gemini';
+      const userRoot = gemini ? 'user-query, .user-query-container' : '.message-bubble';
+      const assistantRoot = gemini ? 'model-response, .response-container' : '.message-bubble';
+      const scope = document.querySelector('main, [role="main"]');
+      if (!scope) return [];
+      const roots = gemini ? `${userRoot}, ${assistantRoot}` : userRoot;
+      return Array.from(scope.querySelectorAll(roots))
+        .filter(el => !el.parentElement.closest(roots) && !el.closest('[contenteditable="true"], [aria-hidden="true"]'))
+        .map(el => {
+          let role, body;
+          if (gemini) {
+            role = el.matches(userRoot) ? 'user' : 'assistant';
+            // Observed live: .query-text holds a hidden, truncated duplicate of the prompt
+            // (h5.screen-reader-user-query-label) before the real p.query-text-line nodes.
+            // Never fall back to the whole turn; no recognised body means skip.
+            if (role === 'user') {
+              const text = el.querySelector('.query-text');
+              if (!text) return null;
+              const lines = Array.from(text.querySelectorAll('.query-text-line'));
+              if (lines.length) {
+                const content = lines.map(extractText).join('\n').trim();
+                return content ? { role, content, hash: hashString(`${role}:${content}`), timestamp: Date.now() } : null;
+              }
+              const clone = text.cloneNode(true);
+              clone.querySelectorAll('.screen-reader-user-query-label').forEach(n => n.remove());
+              body = clone;
+            } else {
+              body = el.querySelector('message-content') || el.querySelector('.model-response-text, .markdown');
+              if (!body) return null;
+            }
+          } else {
+            // Nearest side element decides, by exact class tokens only; ambiguous or absent direction is skipped.
+            const side = el.closest('.items-end, .items-start');
+            if (!side) return null;
+            const end = side.classList.contains('items-end'), start = side.classList.contains('items-start');
+            if (end === start) return null;
+            role = end ? 'user' : 'assistant';
+            body = role === 'user' ? null : el.querySelector('.response-content-markdown');
+          }
+          const content = extractText(body || el);
+          return content ? { role, content, hash: hashString(`${role}:${content}`), timestamp: Date.now() } : null;
+        }).filter(Boolean);
+    }
     const messages = [];
     
     // Get all message containers
@@ -455,30 +555,24 @@
     };
     
     // Hash for comparison
-    const snapshotHash = hashString(JSON.stringify(messages.map(m => m.content)));
+    const snapshotHash = JSON.stringify(messages.map(m => [m.role, m.content]));
     
     return { snapshot, hash: snapshotHash };
   }
   
   // Check for changes and send to extension
   function checkForChanges() {
+    refreshRoute();
+    if (staleRoots.some(node => node.isConnected)) return;
+    if (!PROMPTUTOR_PRIVACY.allowed(privacyState, location.href) || isStreaming()) return;
     const result = takeSnapshot();
     if (!result) return;
     
     const { snapshot, hash } = result;
+    previousRoots = Array.from(document.querySelectorAll('[data-message-author-role], ol[aria-label="Conversation"] > li, [data-user-message-bubble], [data-testid="user-message"], [data-testid="assistant-message"], .font-claude-response, user-query, model-response, .user-query-container, .response-container, .message-bubble'));
     
     // Skip if no change
     if (hash === lastSnapshotHash) return;
-    
-    // Find new messages
-    const newMessages = snapshot.messages.filter(m => !seenMessages.has(m.hash));
-    
-    if (newMessages.length === 0 && lastSnapshot) return;
-    
-    // Mark as seen
-    newMessages.forEach(m => seenMessages.add(m.hash));
-    
-    console.log('[PrompTutor DOM] Detected', newMessages.length, 'new messages');
     
     // Send to extension
     sendToExtension({
@@ -486,17 +580,18 @@
       url: snapshot.url,
       platform: snapshot.platform,
       title: snapshot.title,
-      messages: newMessages.length > 0 ? newMessages : snapshot.messages,
+      messages: snapshot.messages,
       fullConversation: snapshot.messages,
-      isIncremental: lastSnapshot !== null && newMessages.length > 0
+      isIncremental: false
+    }, () => {
+      if (PROMPTUTOR_PRIVACY.conversationUrl(location.href) !== PROMPTUTOR_PRIVACY.conversationUrl(snapshot.url) || !PROMPTUTOR_PRIVACY.allowed(privacyState, location.href)) return;
+      lastSnapshot = snapshot;
+      lastSnapshotHash = hash;
     });
-    
-    lastSnapshot = snapshot;
-    lastSnapshotHash = hash;
   }
   
   // Send data to extension directly (we're in isolated world, can use chrome API)
-  function sendToExtension(payload) {
+  function sendToExtension(payload, onAccepted) {
     // Check if extension context is still valid
     if (!chrome?.runtime?.id) {
       console.log('[PrompTutor DOM] Extension context invalid, skipping send');
@@ -512,10 +607,8 @@
         }
       }, (response) => {
         // Check for error in callback
-        if (chrome.runtime.lastError) {
-          // Silently ignore - extension was reloaded
-          return;
-        }
+        if (chrome.runtime.lastError || !response?.accepted) return;
+        onAccepted();
       });
     } catch (e) {
       // Silently ignore extension context errors
@@ -529,9 +622,14 @@
   function isStreaming() {
     if (platform === 'claude') return !!document.querySelector('[data-is-streaming="true"]');
     // ChatGPT: data-stream-active="" during stream, data-stream-active="null" when done
-    if (platform === 'chatgpt') return !!document.querySelector('[data-stream-active]:not([data-stream-active="null"])');
+    if (platform === 'chatgpt') return !!document.querySelector('[data-stream-active]:not([data-stream-active="null"]):not([data-stream-active="false"]), button[data-testid="stop-button"]');
+    if (platform === 'gemini' || platform === 'grok') {
+      if (document.querySelector('button[aria-label^="Stop"]')) return true;
+    }
+    // Gemini exposes aria-busy on the reply (observed "false" when complete); "true" is assumed to mean in progress.
+    if (platform === 'gemini' && document.querySelector('model-response [aria-busy="true"]')) return true;
     // Fallback: detect via content length change
-    const len = document.body.innerText.length;
+    const len = (document.body.innerText ?? document.body.textContent).length;
     if (len !== lastContentLength) { lastContentLength = len; return true; }
     return false;
   }
@@ -634,34 +732,26 @@
   function init() {
     console.log('[PrompTutor DOM] Initializing for', platform);
 
-    chrome.storage.local.get(['enabled', 'accessToken'], (stored) => {
-      isEnabled = !!(stored.enabled && stored.accessToken);
+    chrome.storage.local.get(['enabled', 'accessToken', 'user', 'conversationConsents'], (stored) => {
+      privacyState = stored;
+      isEnabled = PROMPTUTOR_PRIVACY.allowed(privacyState, location.href);
       if (isEnabled) setTimeout(startCollecting, 500);
     });
 
-    chrome.storage.onChanged.addListener((changes) => {
-      const prevEnabled = isEnabled;
-      if (changes.enabled) isEnabled = changes.enabled.newValue;
-      if (changes.accessToken) isEnabled = isEnabled && !!changes.accessToken.newValue;
-
-      if (!prevEnabled && isEnabled) {
-        startCollecting();
-      } else if (prevEnabled && !isEnabled) {
-        stopCollecting();
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area && area !== 'local') return;
+      for (const key of ['enabled', 'accessToken', 'user', 'conversationConsents']) {
+        if (changes[key]) privacyState[key] = changes[key].newValue;
       }
+      const wasEnabled = isEnabled;
+      isEnabled = PROMPTUTOR_PRIVACY.allowed(privacyState, location.href);
+      if (isEnabled && !wasEnabled) startCollecting();
+      if (!isEnabled) stopCollecting();
     });
 
-    // Re-init on SPA navigation
-    navigation.addEventListener('navigate', () => {
-      if (!isEnabled) return;
-      setTimeout(() => {
-        seenMessages.clear();
-        lastSnapshot = null;
-        lastSnapshotHash = null;
-        checkForChanges();
-        setupObserver();
-      }, 1000);
-    });
+    // Poll as a fallback; Navigation API is not available in every browser.
+    globalThis.navigation?.addEventListener('navigatesuccess', refreshRoute);
+    setInterval(refreshRoute, 500);
   }
 
   // Start

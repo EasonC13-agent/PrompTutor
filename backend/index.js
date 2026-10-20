@@ -5,18 +5,17 @@ import { OAuth2Client } from 'google-auth-library';
 import OpenAI from 'openai';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
-import db, { isPg } from './db/client.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { ensureSchema } from './db/schema.js';
 
+// Preserve backend/.env discovery even when launched from the repository root.
+dotenv.config({ path: fileURLToPath(new URL('.env', import.meta.url)) });
 dotenv.config();
 
-const googleClient = process.env.GOOGLE_CLIENT_ID
+const defaultGoogleClient = process.env.GOOGLE_CLIENT_ID
   ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
   : null;
-
-if (!googleClient) {
-  throw new Error('GOOGLE_CLIENT_ID environment variable is required for authentication');
-}
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -26,13 +25,13 @@ if (!openai) {
   console.warn('OPENAI_API_KEY not configured - /api/detect will be unavailable');
 }
 
-// Initialize schema before starting
-await ensureSchema(db);
-console.log(`Database ready (${isPg ? 'PostgreSQL' : 'SQLite'})`);
-
+export function createApp({ database: db, googleClient = defaultGoogleClient,
+  clientId = process.env.GOOGLE_CLIENT_ID,
+  adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean) } = {}) {
+if (!googleClient || !clientId) throw new Error('GOOGLE_CLIENT_ID environment variable is required for authentication');
+if (!db) throw new Error('Database is required');
 const app = express();
-const PORT = 13001;
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
+const ADMIN_EMAILS = adminEmails;
 
 app.use(cors({
   origin: process.env.CORS_ORIGIN || true,
@@ -48,10 +47,15 @@ async function verifyGoogleToken(token) {
   if (cached && cached.expiresAt > Date.now()) return cached;
 
   const info = await googleClient.getTokenInfo(token);
-  const userId = crypto.createHash('sha256').update(info.email.toLowerCase().trim()).digest('hex');
+  if (info.aud !== clientId || !info.email || ![true, 'true'].includes(info.email_verified) || !Number.isFinite(info.expiry_date) || info.expiry_date <= Date.now()) {
+    throw new Error('Invalid token audience or expiry');
+  }
+  const email = info.email.toLowerCase().trim();
+  const userId = crypto.createHash('sha256').update(email).digest('hex');
   const result = {
     userId,
-    isAdmin: ADMIN_EMAILS.includes(info.email),
+    email,
+    isAdmin: ADMIN_EMAILS.includes(email),
     expiresAt: info.expiry_date,
   };
   tokenCache.set(token, result);
@@ -59,6 +63,7 @@ async function verifyGoogleToken(token) {
 }
 
 async function authenticate(req, res, next) {
+  res.setHeader('Cache-Control', 'no-store');
   const authHeader = req.headers['authorization'];
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
@@ -176,9 +181,20 @@ app.post('/api/message-logs/batch', authenticate, standardLimit, async (req, res
   }
 });
 
+function pagination(req, res) {
+  const { limit = '100', offset = '0' } = req.query;
+  if (typeof limit !== 'string' || typeof offset !== 'string' || !/^\d+$/.test(limit) || !/^\d+$/.test(offset) ||
+      Number(limit) < 1 || Number(limit) > 100 || !Number.isSafeInteger(Number(offset))) {
+    res.status(400).json({ error: 'Invalid pagination: limit 1–100; nonnegative integer offset required' });
+    return null;
+  }
+  return { limit: Number(limit), offset: Number(offset) };
+}
+
 app.get('/api/my-chats', authenticate, standardLimit, async (req, res) => {
-  const limit = parseInt(req.query.limit) || 100;
-  const offset = parseInt(req.query.offset) || 0;
+  const page = pagination(req, res);
+  if (!page) return;
+  const { limit, offset } = page;
 
   try {
     const [logs, [{ count }]] = await Promise.all([
@@ -189,10 +205,24 @@ app.get('/api/my-chats', authenticate, standardLimit, async (req, res) => {
         .where('user_id', req.user.id)
         .groupBy('chat_id', 'url', 'platform')
         .orderBy('last_message_at', 'desc')
+        .orderBy('url', 'asc').orderBy('platform', 'asc').orderBy('chat_id', 'asc')
         .limit(limit)
         .offset(offset),
-      db('message_logs').where('user_id', req.user.id).countDistinct('url as count'),
+      db.from(db('message_logs').select('chat_id', 'url', 'platform').where('user_id', req.user.id).groupBy('chat_id', 'url', 'platform').as('conversations')).count('* as count'),
     ]);
+    if (req.query.includeData === '1' && logs.length) {
+      const rows = await db('message_logs').where('user_id', req.user.id).where(function () {
+        for (const log of logs) this.orWhere({ chat_id: log.chat_id, url: log.url, platform: log.platform });
+      }).orderBy('captured_at', 'asc').orderBy('id', 'asc');
+      const key = row => JSON.stringify([row.chat_id, row.url, row.platform]);
+      const groups = new Map();
+      for (const row of rows) {
+        const k = key(row);
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(row);
+      }
+      for (const log of logs) log.messages = groups.get(key(log)) || [];
+    }
     res.json({ logs, total: Number(count), limit, offset });
   } catch (e) {
     console.error('Query error:', e);
@@ -215,9 +245,13 @@ app.get('/api/chat/:id', authenticate, standardLimit, async (req, res) => {
 
 app.delete('/api/my-chats', authenticate, standardLimit, async (req, res) => {
   try {
-    const deleted = await db('message_logs').where('user_id', req.user.id).delete();
-    console.log(`[${new Date().toISOString()}] User ${req.user.id.slice(0, 8)}... deleted ${deleted} messages`);
-    res.json({ success: true, deleted });
+    const { deleted, deletedGuidance } = await db.transaction(async trx => {
+      const deleted = await trx('message_logs').where('user_id', req.user.id).delete();
+      const deletedGuidance = await trx('guidance_logs').where('user_id', req.user.id).delete();
+      return { deleted, deletedGuidance };
+    });
+    console.log(`[${new Date().toISOString()}] User ${req.user.id.slice(0, 8)}... deleted ${deleted} messages and ${deletedGuidance} guidance logs`);
+    res.json({ success: true, deleted, deletedGuidance });
   } catch (e) {
     console.error('Delete error:', e);
     res.status(500).json({ error: 'Database error' });
@@ -226,15 +260,24 @@ app.delete('/api/my-chats', authenticate, standardLimit, async (req, res) => {
 
 app.delete('/api/conversation', authenticate, standardLimit, async (req, res) => {
   const { url } = req.body;
-  if (!url) return res.status(400).json({ error: 'URL required' });
+  if (typeof url !== 'string' || !url) return res.status(400).json({ error: 'URL required' });
+  const canonicalUrl = url.split(/[?#]/, 1)[0].replace(/\/+$/, '');
+  if (!canonicalUrl) return res.status(400).json({ error: 'URL required' });
 
   try {
-    const deleted = await db('message_logs')
-      .where('user_id', req.user.id)
-      .where('url', 'like', `${url}%`)
-      .delete();
-    console.log(`[${new Date().toISOString()}] User ${req.user.id.slice(0, 8)}... deleted ${deleted} messages for ${url}`);
-    res.json({ success: true, deleted });
+    const { deleted, deletedGuidance } = await db.transaction(async trx => {
+      // Exact literal identity, with only query/hash/slash boundaries denoting
+      // the same conversation. Never interpret URL characters as LIKE patterns.
+      const scoped = table => trx(table).where('user_id', req.user.id).where(function () {
+        this.where('url', canonicalUrl).orWhereRaw('substr(??, 1, length(?) + 1) in (?, ?, ?)',
+          ['url', canonicalUrl, `${canonicalUrl}?`, `${canonicalUrl}#`, `${canonicalUrl}/`]);
+      });
+      const deleted = await scoped('message_logs').delete();
+      const deletedGuidance = await scoped('guidance_logs').delete();
+      return { deleted, deletedGuidance };
+    });
+    console.log(`[${new Date().toISOString()}] User ${req.user.id.slice(0, 8)}... deleted ${deleted} messages and ${deletedGuidance} guidance logs for ${url}`);
+    res.json({ success: true, deleted, deletedGuidance });
   } catch (e) {
     console.error('Delete error:', e);
     res.status(500).json({ error: 'Database error' });
@@ -343,8 +386,9 @@ app.post('/api/message-log', authenticate, standardLimit, async (req, res) => {
 // === ADMIN ENDPOINTS ===
 
 app.get('/api/admin/chats', authenticate, adminOnly, standardLimit, async (req, res) => {
-  const limit = parseInt(req.query.limit) || 100;
-  const offset = parseInt(req.query.offset) || 0;
+  const page = pagination(req, res);
+  if (!page) return;
+  const { limit, offset } = page;
   const { platform } = req.query;
 
   try {
@@ -354,7 +398,7 @@ app.get('/api/admin/chats', authenticate, adminOnly, standardLimit, async (req, 
       return q;
     };
     const [logs, [{ count: total }]] = await Promise.all([
-      baseQuery().orderBy('captured_at', 'desc').limit(limit).offset(offset),
+      baseQuery().orderBy('captured_at', 'desc').orderBy('id', 'desc').limit(limit).offset(offset),
       baseQuery().count('* as count'),
     ]);
     res.json({ logs, total: Number(total), offset, limit });
@@ -366,7 +410,7 @@ app.get('/api/admin/chats', authenticate, adminOnly, standardLimit, async (req, 
 
 app.get('/api/admin/stats', authenticate, adminOnly, standardLimit, async (req, res) => {
   try {
-    const [byPlatform, [{ count: totalLogs }], [{ count: totalUsers }]] = await Promise.all([
+    const [byPlatform, [{ count: totalLogs }], [{ count: totalUsers }], [{ latestCapturedAt }]] = await Promise.all([
       db('message_logs')
         .select('platform')
         .count('id as log_count')
@@ -375,17 +419,25 @@ app.get('/api/admin/stats', authenticate, adminOnly, standardLimit, async (req, 
         .max('captured_at as last_capture')
         .groupBy('platform'),
       db('message_logs').count('* as count'),
-      db('users').whereNotNull('consented_at').count('* as count'),
+      db('message_logs').countDistinct('user_id as count'),
+      db('message_logs').max('captured_at as latestCapturedAt'),
     ]);
 
-    res.json({ totalLogs: Number(totalLogs), totalUsers: Number(totalUsers), byPlatform });
+    res.json({ totalLogs: Number(totalLogs), totalUsers: Number(totalUsers), byPlatform, latestCapturedAt, refreshedAt: new Date().toISOString() });
   } catch (e) {
     console.error('Stats error:', e);
     res.status(500).json({ error: 'Database error' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`PrompTutor API running on port ${PORT}`);
-  console.log(`Admin emails: ${ADMIN_EMAILS.join(', ') || '(none configured)'}`);
-});
+return app;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (!defaultGoogleClient) throw new Error('GOOGLE_CLIENT_ID environment variable is required for authentication');
+  const { default: db, isPg } = await import('./db/client.js');
+  await ensureSchema(db);
+  console.log(`Database ready (${isPg ? 'PostgreSQL' : 'SQLite'})`);
+  const PORT = process.env.PORT || 13001;
+  createApp({ database: db }).listen(PORT, () => console.log(`PrompTutor API running on port ${PORT}`));
+}

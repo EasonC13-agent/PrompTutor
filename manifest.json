@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "PrompTutor",
-  "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6qaJqZRbUxbuIKsdwfLvaEJ5bokhhf+F4I2R8IWIoChm77LB11VfG0JztRfcVGdXK4ndscWdLAeR/3cc7fdPGzx5B/O4Mj+Js0b+tOGMZCJ99SoV/TEWDQSNTdfpSRBORbSWfFZf+8UYlKEtlp/H+dQd5Ikp+06Sj4XBqvgwo3HZFPDPBztd8nQwBjOaSVresJRH/olFpJtUbhvVksNQcIQRHvNEkD8Kv71jWawY5DLPt5E2Cs/x4UQUVXG8p3V/YY6Ql676JeSiokjLS9TZI3WC/7wzBe0cRDJZuobc65rtwErJatGodZ9rmvlcS5o0T2unbyFVyxi5LujpWNnVEQIDAQAB",
+  "version": "0.1.4",
   "description": "Optionally share your AI chat logs with researchers for educational research.",
   "permissions": [
     "storage",
@@ -17,6 +18,11 @@
       "profile"
     ]
   },
+  "host_permissions": [
+    "https://chat-collector.eason.phd/*",
+    "https://www.googleapis.com/*",
+    "https://accounts.google.com/*"
+  ],
   "background": {
     "service_worker": "src/background/index.js"
   },
@@ -38,6 +44,7 @@
         "https://huggingface.co/chat/*"
       ],
       "js": [
+        "src/privacy.js",
         "src/content/dom-parser.js"
       ],
       "run_at": "document_idle"
@@ -59,6 +66,7 @@
         "https://huggingface.co/chat/*"
       ],
       "js": [
+        "src/privacy.js",
         "src/content/overlay.js"
       ],
       "run_at": "document_idle"
@@ -80,6 +88,7 @@
         "https://huggingface.co/chat/*"
       ],
       "js": [
+        "src/privacy.js",
         "src/content/guidance.js",
         "src/content/detector.js"
       ],

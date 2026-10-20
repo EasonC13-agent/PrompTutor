@@ -76,9 +76,11 @@
 <body>
   <div class="page">
     <h1>PrompTutor Admin</h1>
+    <p><button id="refreshBtn">Refresh now</button> <span id="refreshStatus" role="status" aria-live="polite">Loading…</span></p>
     <div id="error" class="error hidden"></div>
 
     <div class="stats-grid" id="statsGrid">
+      <div class="stat-card"><div class="stat-label">Latest capture (client time)</div><div id="statLatest">—</div></div>
       <div class="stat-card"><div class="stat-label">Total Messages</div><div class="stat-value" id="statTotal">—</div></div>
       <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="statUsers">—</div></div>
     </div>

@@ -168,9 +168,9 @@
   
   // Load state from storage
   async function loadState() {
-    const stored = await chrome.storage.local.get(['user', 'enabled', 'mode']);
-    isLoggedIn = !!stored.user;
-    isEnabled = stored.enabled || false;
+    const stored = await chrome.storage.local.get(['user', 'accessToken', 'enabled', 'mode', 'conversationConsents']);
+    isLoggedIn = !!(stored.user && stored.accessToken);
+    isEnabled = PROMPTUTOR_PRIVACY.allowed(stored, location.href);
     currentMode = stored.mode || 'collect';
     updateUI();
   }
@@ -186,10 +186,11 @@
     } else {
       toggle.className = isEnabled ? 'collecting' : '';
       indicator.className = isEnabled ? 'cc-indicator active' : 'cc-indicator';
-      label.textContent = isEnabled ? (currentMode === 'guidance' ? 'Collecting + Guidance' : 'Collecting') : 'Share Data';
+      const supported = !!PROMPTUTOR_PRIVACY.conversationUrl(location.href);
+      label.textContent = !supported ? 'Open a ChatGPT / Claude / Gemini / Grok chat' : isEnabled ? (currentMode === 'guidance' ? 'Sharing this chat + Guidance' : 'Sharing this chat') : 'Share this chat';
       // Hidden feature: clicking label in guidance mode triggers analysis (no visual hint)
       checkbox.checked = isEnabled;
-      checkbox.disabled = false;
+      checkbox.disabled = !PROMPTUTOR_PRIVACY.conversationUrl(location.href);
     }
   }
   
@@ -203,10 +204,13 @@
       return;
     }
     
-    isEnabled = checkbox.checked;
-    await chrome.storage.local.set({ enabled: isEnabled });
-    chrome.runtime.sendMessage({ type: 'TOGGLE_ENABLED', enabled: isEnabled });
-    updateUI();
+    const granted = checkbox.checked;
+    checkbox.disabled = true;
+    try {
+      const result = await chrome.runtime.sendMessage({ type: 'SET_CONVERSATION_CONSENT', url: location.href, granted });
+      if (!result?.success) alert(result?.error || 'Could not update sharing; please retry.');
+    } catch { alert('Extension unavailable; reload this tab before sharing.'); }
+    await loadState();
   });
   
   // Click on label to trigger guidance analysis
@@ -240,14 +244,13 @@
   });
   
   // Listen for storage changes
-  chrome.storage.onChanged.addListener((changes) => {
-    if (changes.enabled) isEnabled = changes.enabled.newValue;
-    if (changes.user) isLoggedIn = !!changes.user.newValue;
-    if (changes.accessToken) isLoggedIn = isLoggedIn && !!changes.accessToken.newValue;
-    if (changes.mode) currentMode = changes.mode.newValue || 'collect';
-    if (changes.enabled || changes.user || changes.accessToken || changes.mode) updateUI();
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if ((!area || area === 'local') && ['enabled', 'user', 'accessToken', 'mode', 'conversationConsents'].some(key => changes[key])) loadState();
   });
-  
+  // URL polling works in browsers without the Navigation API and never grants consent.
+  let lastUrl = location.href;
+  setInterval(() => { if (location.href !== lastUrl) { lastUrl = location.href; loadState(); } }, 500);
+
   // Sync timer
   async function updateSyncTimer() {
     if (!syncTimeEl) return;

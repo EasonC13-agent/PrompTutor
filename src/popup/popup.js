@@ -167,7 +167,7 @@ function updateMainView(enabled, pending, uploaded) {
   
   enableToggle.checked = enabled;
   status.className = `status ${enabled ? 'enabled' : 'disabled'}`;
-  statusText.textContent = enabled ? 'Collecting' : 'Disabled';
+  statusText.textContent = enabled ? 'Ready — opt in using Share this chat' : 'Disabled';
   
   uploadedCount.textContent = uploaded ?? '—';
   updateLocalCount();
@@ -233,7 +233,7 @@ enableToggle.addEventListener('change', async () => {
   
   const currentMode = document.querySelector('input[name="mode"]:checked')?.value || 'collect';
   status.className = `status ${enabled ? 'enabled' : 'disabled'}`;
-  statusText.textContent = enabled ? (currentMode === 'guidance' ? 'Collecting + Guidance' : 'Collecting') : 'Disabled';
+  statusText.textContent = enabled ? 'Ready — opt in using Share this chat' : 'Disabled';
 });
 
 // Sync button
@@ -244,7 +244,7 @@ syncBtn.addEventListener('click', async () => {
   chrome.runtime.sendMessage({ type: 'SYNC_NOW', accessToken }, (response) => {
     if (response?.success) {
       syncBtn.textContent = `Synced ${response.synced} logs!`;
-      pendingCount.textContent = '0';
+      updateLocalCount();
       if (response.total != null) {
         uploadedCount.textContent = response.total;
         chrome.storage.local.set({ uploadedCount: response.total });
@@ -277,16 +277,14 @@ deleteDataBtn.addEventListener('click', async () => {
   deleteDataBtn.textContent = 'Deleting...';
   
   try {
-    const response = await fetch(`${CONFIG.apiEndpoint}/api/my-chats`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
+    const data = await chrome.runtime.sendMessage({ type: 'DELETE_ALL_DATA' });
+    if (data?.success) {
       alert(`Deleted ${data.deleted} logs`);
       uploadedCount.textContent = '0';
       chrome.storage.local.set({ uploadedCount: 0 });
+      enableToggle.checked = false;
+      statusText.textContent = 'Disabled';
+      updateLocalCount();
     } else {
       alert('Delete failed. Please try again.');
     }
@@ -317,8 +315,10 @@ logoutBtn.addEventListener('click', async () => {
     console.error('Failed to clear all tokens:', e);
   }
   
-  // Clear ALL data including consent
-  await chrome.storage.local.clear();
+  // Remove identity, consent and content; retain content-free deletion work so
+  // it can be retried only after the original account signs in again.
+  await chrome.storage.local.remove(['user', 'accessToken', 'hasConsented', 'enabled',
+    'conversationCache', 'conversationConsents', 'pendingData', 'uploadedCount', 'mode']);
   
   currentUser = null;
   accessToken = null;
