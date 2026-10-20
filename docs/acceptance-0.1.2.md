@@ -40,7 +40,7 @@ The strict OAuth harness assertion **failed** because it looked for `input[type=
 
 ## What remains unverified
 
-1. A real authorized Google account must complete authentication in the candidate, followed by consent and a harmless live ChatGPT/Claude conversation. The fixture/verifier result does not establish live-provider capture fidelity or real authentication.
+1. Real Google authentication is now verified (see the dated live check below). Explicit conversation consent and a harmless live ChatGPT/Claude conversation still need acceptance; fixture capture is not live-provider fidelity.
 2. Authenticated production ingestion and visibility of newly captured production records have not been exercised. Existing production data was inspected read-only; production was not deployed or modified.
 3. A backend deployment is required for the corrected aggregate counts, embedded conversation details and transactionally complete guidance deletion. The extension's refresh pages retain an existing-server fallback, but that is not a deployed backend repair.
 4. Store publication, managed-browser policy acceptance, attachments, virtualized/offscreen history, and sites other than the documented persisted ChatGPT/Claude routes are outside this acceptance.
@@ -51,6 +51,15 @@ The strict OAuth harness assertion **failed** because it looked for `input[type=
 - Open **Admin** in the extension popup using an account already on the backend administrator allowlist. This opens `src/admin/admin.html` inside the extension. It is not the public website homepage.
 - Open **View My Data** for the signed-in user's own conversations, `src/view/view.html`.
 - Both pages refresh every 15 seconds and provide **Refresh now**. Last client capture time and last successful refresh are labelled separately; neither invents a server-ingestion timestamp.
+
+## Real Google / production read-only check — 2026-10-20
+
+- The owner completed Google credential entry in the same isolated exact-0.1.2 installation. The expected account was re-read on the official basic profile/email consent page before continuing. The extension then persisted a real Google identity and access token; token bytes were neither printed nor exported. Collection remained OFF with zero pending messages.
+- The real personal-data dashboard read the existing production service successfully: initial, manual and 15-second automatic refresh each returned HTTP 200 from `/api/my-chats`. The current account has no displayed conversation records; this does not prove that new production ingestion works.
+- The researcher dashboard did **not** pass: `/api/admin/stats` and `/api/admin/chats` returned HTTP 403 for the owner-selected account on all three refresh checks. The earlier local researcher-dashboard acceptance remains valid only for the isolated candidate backend.
+- Read-only deployment investigation found configuration drift: `docker exec` inherits a two-address `ADMIN_EMAILS` list, but the already-running Node application process has no `ADMIN_EMAILS` entry in its startup environment. `/app/.env`, loaded by `dotenv.config()`, contains a different two-address list excluding the owner-selected account. Reading a newly executed process's container environment is not verification of the serving process's effective administrator policy. The earlier account recommendation based only on that container environment was incomplete.
+- No administrator permissions, production deployment, conversation records or Store release were changed. Do not fix this by weakening `adminOnly`, seeding an identity, or silently granting a new account access. The owner must approve the intended effective administrator list and deployment/configuration update; verify real HTTP 200 and rendered researcher statistics afterward.
+- Keep the initiating extension popup alive through a manual OAuth handoff. A previous handoff closed that context before owner completion and did not yield a stored extension identity; that observation alone does not establish a Chrome lifecycle bug.
 
 ## Retained earlier failures
 
