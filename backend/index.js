@@ -245,9 +245,13 @@ app.get('/api/chat/:id', authenticate, standardLimit, async (req, res) => {
 
 app.delete('/api/my-chats', authenticate, standardLimit, async (req, res) => {
   try {
-    const deleted = await db('message_logs').where('user_id', req.user.id).delete();
-    console.log(`[${new Date().toISOString()}] User ${req.user.id.slice(0, 8)}... deleted ${deleted} messages`);
-    res.json({ success: true, deleted });
+    const { deleted, deletedGuidance } = await db.transaction(async trx => {
+      const deleted = await trx('message_logs').where('user_id', req.user.id).delete();
+      const deletedGuidance = await trx('guidance_logs').where('user_id', req.user.id).delete();
+      return { deleted, deletedGuidance };
+    });
+    console.log(`[${new Date().toISOString()}] User ${req.user.id.slice(0, 8)}... deleted ${deleted} messages and ${deletedGuidance} guidance logs`);
+    res.json({ success: true, deleted, deletedGuidance });
   } catch (e) {
     console.error('Delete error:', e);
     res.status(500).json({ error: 'Database error' });
@@ -256,15 +260,24 @@ app.delete('/api/my-chats', authenticate, standardLimit, async (req, res) => {
 
 app.delete('/api/conversation', authenticate, standardLimit, async (req, res) => {
   const { url } = req.body;
-  if (!url) return res.status(400).json({ error: 'URL required' });
+  if (typeof url !== 'string' || !url) return res.status(400).json({ error: 'URL required' });
+  const canonicalUrl = url.split(/[?#]/, 1)[0].replace(/\/+$/, '');
+  if (!canonicalUrl) return res.status(400).json({ error: 'URL required' });
 
   try {
-    const deleted = await db('message_logs')
-      .where('user_id', req.user.id)
-      .where('url', 'like', `${url}%`)
-      .delete();
-    console.log(`[${new Date().toISOString()}] User ${req.user.id.slice(0, 8)}... deleted ${deleted} messages for ${url}`);
-    res.json({ success: true, deleted });
+    const { deleted, deletedGuidance } = await db.transaction(async trx => {
+      // Exact literal identity, with only query/hash/slash boundaries denoting
+      // the same conversation. Never interpret URL characters as LIKE patterns.
+      const scoped = table => trx(table).where('user_id', req.user.id).where(function () {
+        this.where('url', canonicalUrl).orWhereRaw('substr(??, 1, length(?) + 1) in (?, ?, ?)',
+          ['url', canonicalUrl, `${canonicalUrl}?`, `${canonicalUrl}#`, `${canonicalUrl}/`]);
+      });
+      const deleted = await scoped('message_logs').delete();
+      const deletedGuidance = await scoped('guidance_logs').delete();
+      return { deleted, deletedGuidance };
+    });
+    console.log(`[${new Date().toISOString()}] User ${req.user.id.slice(0, 8)}... deleted ${deleted} messages and ${deletedGuidance} guidance logs for ${url}`);
+    res.json({ success: true, deleted, deletedGuidance });
   } catch (e) {
     console.error('Delete error:', e);
     res.status(500).json({ error: 'Database error' });

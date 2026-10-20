@@ -106,7 +106,7 @@ OPENAI_API_KEY=your-key-for-detection
 2. Enable **Developer mode**
 3. Click **Load unpacked**
 4. Run `npm ci` and `npm run build`, then select the generated **dist/** directory.
-5. Developer-mode IDs depend on the unpacked directory unless a key is configured. The OAuth client must authorize the exact `https://<extension-id>.chromiumapp.org/` redirect URI. An unpacked install is not proof that Google login or a Store rollout works.
+5. The developer package retains the historical public manifest key and fixed ID `linjhjneagnaggeeljkgdjdlbldpdhhk`, so moving the unpacked directory does not change its Google OAuth redirect. A real isolated-browser diagnostic reached Google's ordinary sign-in page for this identity. This does **not** establish completed sign-in, consent or authenticated collection. Do not use this keyed developer package as a new-item Chrome Web Store upload without the separate Store manifest preflight.
 
 ### Usage
 
@@ -140,7 +140,7 @@ The backend tests use a real in-memory SQLite database and local HTTP server; on
 
 ## Supported Platforms and acceptance limits
 
-The 0.1.1 candidate admits capture only on persisted ChatGPT `/c/...` and `/g/.../c/...` conversations, and Claude `/chat/...` conversations. Sign in, enable the master switch, then explicitly turn sharing on in each conversation. Existing installations must opt in to each conversation again; legacy queues without a provable account and consent are discarded rather than uploaded.
+The 0.1.2 candidate admits capture only on persisted ChatGPT `/c/...` and `/g/.../c/...` conversations, and Claude `/chat/...` conversations. Sign in, enable the master switch, then explicitly turn sharing on in each conversation. Existing installations must opt in to each conversation again; legacy queues without a provable account and consent are discarded rather than uploaded.
 
 Other legacy site selectors remain in the source, but **cannot acquire collection consent in this candidate**. They are not supported collection paths. Attachments, virtualized/offscreen history, and full fidelity across all third-party UI changes are not verified. During SPA navigation, retained old message nodes block capture rather than risk attributing the previous conversation to a new URL.
 

@@ -9,14 +9,20 @@ function page(t, kind, responder, signedIn = true) {
   const dom = new JSDOM(fs.readFileSync(new URL(`${kind}.html`, base), 'utf8'), { runScripts: 'outside-only', url: 'https://extension.test/' });
   const w = dom.window, calls = [], timers = [];
   const storage = { accessToken: signedIn ? 'test-token' : null, apiEndpoint: 'http://localhost:3456' };
-  w.chrome = { storage: { local: { async get() { return { ...storage }; } } } };
+  const listeners = [];
+  w.chrome = { storage: { onChanged: { addListener(fn) { listeners.push(fn); } }, local: { async get() { return { ...storage }; } } } };
+  w.AbortController = AbortController;
   w.AbortSignal = AbortSignal;
   w.fetch = async (url, options) => { calls.push({ url, options }); return responder(url, options); };
   w.setInterval = (fn, ms) => { timers.push({ fn, ms }); return timers.length; };
   w.clearInterval = () => {};
   w.eval(fs.readFileSync(new URL(`${kind}.js`, base), 'utf8'));
   t.after(() => dom.window.close());
-  return { w, calls, timers, storage, el: id => w.document.getElementById(id) };
+  return { w, calls, timers, storage, change(values) {
+    const changes = Object.fromEntries(Object.entries(values).map(([key, newValue]) => [key, { oldValue: storage[key], newValue }]));
+    Object.assign(storage, values);
+    for (const fn of listeners) fn(changes, 'local');
+  }, el: id => w.document.getElementById(id) };
 }
 const stats = { totalLogs: 6, totalUsers: 1, byPlatform: [], latestCapturedAt: '2026-05-09T00:43:30Z' };
 
@@ -148,3 +154,74 @@ test('signed-out dashboards do not request private APIs or start timers', async 
     await flush(); assert.equal(p.calls.length, 0); assert.equal(p.timers.length, 0);
   }
 });
+
+
+for (const kind of ['admin', 'view']) {
+  for (const change of [{ accessToken: null }, { accessToken: 'B' }, { user: { email: 'b@test' } }, { apiEndpoint: 'http://localhost:9999' }]) {
+    test(`${kind} invalidates in-flight results synchronously on ${JSON.stringify(change)}`, async t => {
+      let hold = false; const pending = [];
+      const data = url => kind === 'admin' ? (url.includes('/stats') ? stats : { logs: [{ id: 1, message_text: 'PRIVATE' }], total: 1 }) : { logs: [{ chat_id: 'one', messages: [{ message_text: 'PRIVATE' }] }], total: 1 };
+      const p = page(t, kind, url => hold ? new Promise(resolve => pending.push({ resolve, url })) : ok(data(url)));
+      await flush(); assert.match(p.w.document.body.textContent, /PRIVATE/);
+      hold = true;
+      const request = kind === 'admin' ? p.w.refreshDashboard() : p.w.refreshChats(); await flush();
+      p.change(change);
+      assert.ok(!p.w.document.body.textContent.includes('PRIVATE'), 'clear synchronously');
+      assert.ok(p.calls.at(-1).options.signal.aborted, 'abort outstanding request');
+      // Returning to A must not revive A's old generation.
+      p.change({ accessToken: 'test-token', user: undefined, apiEndpoint: 'http://localhost:3456' });
+      for (const x of pending) x.resolve(ok(data(x.url)));
+      await request; await flush();
+      assert.ok(!p.w.document.body.textContent.includes('PRIVATE'));
+    });
+  }
+  test(`${kind} rechecks storage before rendering success or errors without an event`, async t => {
+    for (const failure of [false, true]) {
+      const pending = [];
+      const p = page(t, kind, () => new Promise(resolve => { pending.push(resolve); }));
+      await flush(); p.storage.accessToken = null;
+      for (const resolve of pending) resolve(failure ? { ok: false, status: 500 } : ok({ ...stats, total: 1, logs: [{ message_text: 'PRIVATE', messages: [{ message_text: 'PRIVATE' }] }] }));
+      await flush();
+      assert.ok(!p.w.document.body.textContent.includes('PRIVATE'));
+      assert.ok(!p.el('error').textContent.includes('HTTP 500'));
+    }
+  });
+}
+
+test('legacy detail success and errors cannot render across session changes', async t => {
+  for (const failure of [false, true]) {
+    let resolve;
+    const p = page(t, 'view', url => url.includes('/api/chat/') ? new Promise(r => { resolve = r; }) : ok({ total: 1, logs: [{ chat_id: 'one' }] }));
+    await flush(); p.w.document.querySelector('.chat-header').click(); await flush();
+    const detached = p.w.document.querySelector('.chat-messages');
+    p.change({ accessToken: null });
+    resolve(failure ? { ok: false, status: 500 } : ok([{ message_text: 'LEGACY PRIVATE' }])); await flush();
+    assert.ok(!p.w.document.body.textContent.includes('LEGACY PRIVATE'));
+    assert.ok(!detached.textContent.includes('LEGACY PRIVATE'));
+    assert.ok(!detached.textContent.includes('HTTP 500'));
+  }
+});
+
+
+for (const kind of ['admin', 'view']) {
+  test(`${kind} permits B refresh while A is pending and suppresses A errors`, async t => {
+    const pending = [];
+    let hold = true;
+    const p = page(t, kind, url => hold ? new Promise(resolve => pending.push(resolve)) : ok(kind === 'admin' ? (url.includes('/stats') ? stats : { total: 1, logs: [{ id: 2, message_text: 'ACCOUNT B' }] }) : { total: 1, logs: [{ messages: [{ message_text: 'ACCOUNT B' }] }] }));
+    await flush();
+    p.change({ accessToken: 'B', user: { email: 'b@test' } }); hold = false;
+    await (kind === 'admin' ? p.w.refreshDashboard() : p.w.refreshChats());
+    assert.match(p.w.document.body.textContent, /ACCOUNT B/);
+    for (const resolve of pending) resolve({ ok: false, status: 401 }); await flush();
+    assert.match(p.w.document.body.textContent, /ACCOUNT B/);
+    assert.ok(!p.el('error').textContent.includes('expired'));
+  });
+  test(`${kind} aborts and rejects a response held inside json parsing`, async t => {
+    const pending = [];
+    const p = page(t, kind, () => ({ ok: true, json: () => new Promise(resolve => pending.push(resolve)) }));
+    await flush(); p.change({ accessToken: null });
+    assert.ok(p.calls.every(call => call.options.signal.aborted));
+    for (const resolve of pending) resolve({ ...stats, total: 1, logs: [{ message_text: 'PRIVATE JSON', messages: [{ message_text: 'PRIVATE JSON' }] }] });
+    await flush(); assert.ok(!p.w.document.body.textContent.includes('PRIVATE JSON'));
+  });
+}

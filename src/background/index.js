@@ -15,16 +15,60 @@ let conversationCache = {};
 let user = null;
 let conversationConsents = {};
 let syncPromise = null;
+let networkPromise = Promise.resolve();
+function serializeNetwork(operation) {
+  const next = networkPromise.then(operation);
+  networkPromise = next.catch(() => {});
+  return next;
+}
 let pendingDeletions = {};
 let consentPromise = Promise.resolve();
+let accountGeneration = 0;
+let collectionGeneration = 0;
+// Receipts contain only owner and canonical URL; never conversation content.
+function deletionKey(url, account = PROMPTUTOR_PRIVACY.owner({ user })) {
+  return JSON.stringify([account, getConversationUrl(url)]);
+}
+function migrateDeletionReceipts(receipts) {
+  const migrated = {};
+  for (const [key, owner] of Object.entries(receipts || {})) {
+    if (typeof owner !== 'string' || !owner.trim()) continue;
+    const account = owner.toLowerCase().trim();
+    let url = getConversationUrl(key); // Legacy URL -> owner receipt.
+    if (!url) {
+      try {
+        const pair = JSON.parse(key);
+        if (Array.isArray(pair) && pair.length === 2 && pair[0] === account) url = getConversationUrl(pair[1]);
+      } catch {}
+    }
+    if (url) migrated[deletionKey(url, account)] = account;
+  }
+  return migrated;
+}
+function ownDeletionUrls() {
+  const account = PROMPTUTOR_PRIVACY.owner({ user });
+  return Object.entries(pendingDeletions).filter(([, owner]) => owner === account)
+    .map(([key]) => JSON.parse(key)[1]);
+}
 function canCollect(url) {
-  return !pendingDeletions[url] && PROMPTUTOR_PRIVACY.allowed({ enabled: isEnabled, accessToken, user, conversationConsents }, url);
+  return !pendingDeletions[deletionKey(url)] && PROMPTUTOR_PRIVACY.allowed({ enabled: isEnabled, accessToken, user, conversationConsents }, url);
+}
+
+// Reserve at content admission, not when queued work eventually starts. Current
+// consent alone cannot distinguish revoke/regrant or an account ABA transition.
+function collectionGuard(url) {
+  const collection = collectionGeneration;
+  const auth = accountGeneration;
+  const account = PROMPTUTOR_PRIVACY.owner({ user });
+  const admitted = canCollect(url);
+  return () => admitted && collection === collectionGeneration && auth === accountGeneration &&
+    account === PROMPTUTOR_PRIVACY.owner({ user }) && canCollect(url);
 }
 
 let resolveReady;
 const ready = new Promise(resolve => { resolveReady = resolve; });
 chrome.storage.local.get(['enabled', 'accessToken', 'conversationCache', 'apiEndpoint', 'user', 'conversationConsents', 'pendingDeletions'], (result) => {
-  pendingDeletions = result.pendingDeletions || {};
+  pendingDeletions = migrateDeletionReceipts(result.pendingDeletions);
   user = result.user || null;
   conversationConsents = result.conversationConsents || {};
   isEnabled = result.enabled ?? false;
@@ -34,7 +78,7 @@ chrome.storage.local.get(['enabled', 'accessToken', 'conversationCache', 'apiEnd
   const account = PROMPTUTOR_PRIVACY.owner({ user });
   conversationCache = Object.fromEntries(Object.entries(conversationCache).filter(([url, cache]) =>
     canCollect(url) && cache.owner === account && Array.isArray(cache.messages)));
-  chrome.storage.local.set({ conversationCache }).then(resolveReady);
+  chrome.storage.local.set({ conversationCache, pendingDeletions }).then(resolveReady);
 });
 
 // ==================== LISTENERS ====================
@@ -43,12 +87,20 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area && area !== 'local') return;
   const previousAccount = PROMPTUTOR_PRIVACY.owner({ user });
   const wasEnabled = isEnabled;
+  if (changes.user || changes.enabled || changes.conversationConsents || changes.pendingDeletions) collectionGeneration++;
+  if (changes.accessToken && (changes.accessToken.newValue || null) !== accessToken) {
+    // A refresh publishes its token in memory before storage; external token
+    // replacement/removal instead invalidates every outstanding auth attempt.
+    accountGeneration++;
+    collectionGeneration++;
+  }
   if (changes.user) user = changes.user.newValue || null;
   if (changes.enabled) isEnabled = changes.enabled.newValue === true;
   if (changes.accessToken) accessToken = changes.accessToken.newValue || null;
   if (changes.conversationConsents) conversationConsents = changes.conversationConsents.newValue || {};
-  if (changes.pendingDeletions) pendingDeletions = changes.pendingDeletions.newValue || {};
+  if (changes.pendingDeletions) pendingDeletions = migrateDeletionReceipts(changes.pendingDeletions.newValue);
   if (previousAccount !== PROMPTUTOR_PRIVACY.owner({ user })) {
+    accountGeneration++;
     conversationCache = {};
     conversationConsents = {};
     chrome.storage.local.set({ conversationCache, conversationConsents });
@@ -156,12 +208,13 @@ async function handleGoogleSignIn() {
 
 async function trySilentRefresh() {
   const account = PROMPTUTOR_PRIVACY.owner({ user });
+  const generation = accountGeneration;
   try {
     const token = await googleToken(false);
     const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${token}` } });
     if (!response.ok) return false;
     const refreshed = await response.json();
-    if (!account || refreshed.email?.toLowerCase().trim() !== account || PROMPTUTOR_PRIVACY.owner({ user }) !== account) return false;
+    if (!account || generation !== accountGeneration || refreshed.email?.toLowerCase().trim() !== account || PROMPTUTOR_PRIVACY.owner({ user }) !== account) return false;
     accessToken = token;
     await chrome.storage.local.set({ accessToken });
     return true;
@@ -176,11 +229,12 @@ function authHeaders() {
 
 async function backendFetch(url, options = {}, guard = () => true) {
   const account = PROMPTUTOR_PRIVACY.owner({ user });
-  if (!guard()) throw new Error('Consent revoked');
+  const generation = accountGeneration;
+  if (!account || !accessToken || !guard()) throw new Error('Consent revoked');
   const res = await fetch(url, { ...options, headers: { ...authHeaders(), ...options.headers } });
-  if (res.status === 401) {
+  if (res.status === 401 && generation === accountGeneration && PROMPTUTOR_PRIVACY.owner({ user }) === account && guard()) {
     const refreshed = await trySilentRefresh();
-    if (refreshed && guard() && PROMPTUTOR_PRIVACY.owner({ user }) === account) {
+    if (refreshed && generation === accountGeneration && guard() && PROMPTUTOR_PRIVACY.owner({ user }) === account) {
       return fetch(url, { ...options, headers: { ...authHeaders(), ...options.headers } });
     }
   }
@@ -191,7 +245,8 @@ async function backendFetch(url, options = {}, guard = () => true) {
 
 async function handleChatData(payload, tabUrl) {
   const conversationUrl = getConversationUrl(payload?.url);
-  if (!canCollect(conversationUrl) || !tabUrl || getConversationUrl(tabUrl) !== conversationUrl) return false;
+  const guard = collectionGuard(conversationUrl);
+  if (!guard() || !tabUrl || getConversationUrl(tabUrl) !== conversationUrl) return false;
   const account = PROMPTUTOR_PRIVACY.owner({ user });
   const messages = payload.fullConversation || payload.messages || [];
   if (!Array.isArray(messages)) return false;
@@ -207,20 +262,21 @@ async function handleChatData(payload, tabUrl) {
     const assistantResponse = replies.join('\n\n');
     const bytes = new TextEncoder().encode(JSON.stringify([account, conversationUrl, i, message.content, assistantResponse]));
     const digest = await crypto.subtle.digest('SHA-256', bytes);
+    if (!guard()) return false;
     const messageHash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
     pairs.push({ platform: new URL(conversationUrl).hostname === 'claude.ai' ? 'claude' : 'chatgpt',
       url: conversationUrl, chatId: getChatId(conversationUrl), messageText: message.content,
       assistantResponse, messageHash, capturedAt: new Date().toISOString() });
   }
   // Crypto yields: recheck consent and account before writing any content.
-  if (!canCollect(conversationUrl) || PROMPTUTOR_PRIVACY.owner({ user }) !== account) return false;
+  if (!guard()) return false;
   let cache = conversationCache[conversationUrl];
   if (!cache || cache.owner !== account) cache = conversationCache[conversationUrl] = { owner: account, messages: [], lastUpdate: null };
   const seen = new Set(cache.messages.map(message => message.messageHash));
   for (const pair of pairs) if (!seen.has(pair.messageHash)) { cache.messages.push(pair); seen.add(pair.messageHash); }
   cache.lastUpdate = Date.now();
   await chrome.storage.local.set({ conversationCache });
-  return true;
+  return guard();
 }
 
 function getConversationUrl(url) { return PROMPTUTOR_PRIVACY.conversationUrl(url); }
@@ -239,68 +295,74 @@ async function deleteAllData() {
   const account = PROMPTUTOR_PRIVACY.owner({ user });
   const token = accessToken;
   if (!account || !token) return { success: false, error: 'Sign in first' };
+  collectionGeneration++;
   for (const url of Object.keys(conversationConsents)) {
-    if (conversationConsents[url] === account) pendingDeletions[url] = account;
+    if (conversationConsents[url] === account) pendingDeletions[deletionKey(url, account)] = account;
   }
   isEnabled = false;
   conversationConsents = {};
   conversationCache = {};
   await chrome.storage.local.set({ enabled: false, conversationConsents, conversationCache, pendingDeletions });
-  await syncPromise;
-  if (PROMPTUTOR_PRIVACY.owner({ user }) !== account) return { success: false, error: 'Account changed; retry deletion with the original account' };
-  const response = await fetch(`${CONFIG.apiEndpoint}/api/my-chats`, {
-    method: 'DELETE', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+  return serializeNetwork(async () => {
+    if (PROMPTUTOR_PRIVACY.owner({ user }) !== account) return { success: false, error: 'Account changed; retry deletion with the original account' };
+    const response = await backendFetch(`${CONFIG.apiEndpoint}/api/my-chats`, {
+      method: 'DELETE'
+    }, () => PROMPTUTOR_PRIVACY.owner({ user }) === account);
+    if (!response.ok) return { success: false, error: `Deletion failed: HTTP ${response.status}; retry required` };
+    const result = await response.json();
+    if (PROMPTUTOR_PRIVACY.owner({ user }) === account) {
+      for (const url of Object.keys(pendingDeletions)) if (pendingDeletions[url] === account) delete pendingDeletions[url];
+      await chrome.storage.local.set({ uploadedCount: 0, pendingDeletions });
+    }
+    return { success: true, deleted: result.deleted };
   });
-  if (!response.ok) return { success: false, error: `Deletion failed: HTTP ${response.status}; retry required` };
-  const result = await response.json();
-  if (PROMPTUTOR_PRIVACY.owner({ user }) === account) {
-    for (const url of Object.keys(pendingDeletions)) if (pendingDeletions[url] === account) delete pendingDeletions[url];
-    await chrome.storage.local.set({ uploadedCount: 0, pendingDeletions });
-  }
-  return { success: true, deleted: result.deleted };
 }
 
 async function setConversationConsent(message, sender) {
   const url = getConversationUrl(message.url);
   if (!url || url !== getConversationUrl(sender.tab?.url) || !user || !accessToken) return { success: false, error: 'Open a supported conversation and sign in first' };
   if (message.granted === true) {
-    if (pendingDeletions[url]) return { success: false, error: 'Deletion pending; retry after synchronization' };
+    if (pendingDeletions[deletionKey(url)]) return { success: false, error: 'Deletion pending; retry after synchronization' };
+    collectionGeneration++;
     conversationConsents[url] = PROMPTUTOR_PRIVACY.owner({ user });
     isEnabled = true;
     await chrome.storage.local.set({ enabled: true, conversationConsents });
     return { success: true };
   }
   const account = conversationConsents[url] || PROMPTUTOR_PRIVACY.owner({ user });
+  collectionGeneration++;
   delete conversationConsents[url];
   delete conversationCache[url];
-  pendingDeletions[url] = account;
+  pendingDeletions[deletionKey(url, account)] = account;
   await chrome.storage.local.set({ conversationCache, conversationConsents, pendingDeletions });
-  await syncPromise; // Do not let a completed POST resurrect data after deletion.
-  return deleteConversation(url);
+  // Queue behind all admitted uploads/deletions, not only the current upload.
+  return serializeNetwork(() => deleteConversation(url, account));
 }
 
 async function deleteActiveConversations() {
+  collectionGeneration++;
   const account = PROMPTUTOR_PRIVACY.owner({ user });
   for (const url of Object.keys(conversationConsents)) {
-    if (conversationConsents[url] === account) pendingDeletions[url] = account;
+    if (conversationConsents[url] === account) pendingDeletions[deletionKey(url, account)] = account;
   }
   conversationConsents = {};
   conversationCache = {};
   await chrome.storage.local.set({ conversationCache, conversationConsents, pendingDeletions });
-  await syncPromise;
-  for (const url of Object.keys(pendingDeletions)) await deleteConversation(url);
+  return serializeNetwork(async () => {
+    if (PROMPTUTOR_PRIVACY.owner({ user }) !== account) return;
+    for (const url of ownDeletionUrls()) await deleteConversation(url, account);
+  });
 }
 
-async function deleteConversation(url) {
-  const account = PROMPTUTOR_PRIVACY.owner({ user });
-  if (!accessToken || pendingDeletions[url] !== account) return { success: false, error: 'Deletion needs the original account' };
+async function deleteConversation(url, account = PROMPTUTOR_PRIVACY.owner({ user })) {
+  if (PROMPTUTOR_PRIVACY.owner({ user }) !== account || !accessToken || pendingDeletions[deletionKey(url, account)] !== account) return { success: false, error: 'Deletion needs the original account' };
   try {
-    const response = await fetch(`${CONFIG.apiEndpoint}/api/conversation`, {
-      method: 'DELETE', headers: authHeaders(), body: JSON.stringify({ url })
-    });
+    const response = await backendFetch(`${CONFIG.apiEndpoint}/api/conversation`, {
+      method: 'DELETE', body: JSON.stringify({ url })
+    }, () => PROMPTUTOR_PRIVACY.owner({ user }) === account && pendingDeletions[deletionKey(url, account)] === account);
     if (!response.ok) return { success: false, error: `Deletion pending: HTTP ${response.status}` };
     if (PROMPTUTOR_PRIVACY.owner({ user }) === account) {
-      delete pendingDeletions[url];
+      delete pendingDeletions[deletionKey(url, account)];
       await chrome.storage.local.set({ pendingDeletions });
     }
     return { success: true };
@@ -310,69 +372,78 @@ async function deleteConversation(url) {
 async function syncAllCachedData() {
   await ready;
   if (syncPromise) return syncPromise;
-  for (const url of Object.keys(pendingDeletions)) {
-    const result = await deleteConversation(url);
-    if (!result.success) return { ...result, synced: 0 };
-  }
-  return uploadCachedData();
+  const generation = accountGeneration;
+  syncPromise = serializeNetwork(async () => {
+    if (generation !== accountGeneration) return { success: false, synced: 0, error: 'Account changed' };
+    for (const url of ownDeletionUrls()) {
+      const result = await deleteConversation(url);
+      if (!result.success) return { ...result, synced: 0 };
+    }
+    return uploadCachedData();
+  }).finally(() => { syncPromise = null; });
+  return syncPromise;
 }
 
-function uploadCachedData() {
-  if (syncPromise) return syncPromise;
+async function uploadCachedData() {
+  const generation = collectionGeneration;
   const account = PROMPTUTOR_PRIVACY.owner({ user });
-  const token = accessToken;
   const batches = Object.entries(conversationCache).filter(([url, cache]) =>
     canCollect(url) && cache.owner === account && cache.messages?.length
   ).map(([url, cache]) => ({ url, cache, messages: cache.messages.slice() }));
   const messages = batches.flatMap(batch => batch.messages);
   if (!messages.length) return Promise.resolve({ success: true, synced: 0 });
-  syncPromise = (async () => {
-    try {
-      const response = await fetch(`${CONFIG.apiEndpoint}/api/message-logs/batch`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ messages })
-      });
-      if (!response.ok) return { success: false, error: `HTTP ${response.status}`, synced: 0 };
-      const data = await response.json();
-      for (const batch of batches) {
-        if (conversationCache[batch.url] !== batch.cache || PROMPTUTOR_PRIVACY.owner({ user }) !== account) continue;
-        const sent = new Set(batch.messages);
-        batch.cache.messages = batch.cache.messages.filter(message => !sent.has(message));
-      }
-      const update = { conversationCache };
-      if (data.total != null && PROMPTUTOR_PRIVACY.owner({ user }) === account) update.uploadedCount = data.total;
-      await chrome.storage.local.set(update);
-      return { success: true, synced: messages.length, total: data.total };
-    } catch (e) {
-      return { success: false, error: e.message, synced: 0 };
-    } finally { syncPromise = null; }
-  })();
-  return syncPromise;
+  try {
+    const response = await backendFetch(`${CONFIG.apiEndpoint}/api/message-logs/batch`, {
+      method: 'POST', body: JSON.stringify({ messages })
+    }, () => generation === collectionGeneration && PROMPTUTOR_PRIVACY.owner({ user }) === account && batches.every(batch =>
+      canCollect(batch.url) && conversationCache[batch.url] === batch.cache));
+    if (!response.ok) return { success: false, error: `HTTP ${response.status}`, synced: 0 };
+    const data = await response.json();
+    for (const batch of batches) {
+      if (conversationCache[batch.url] !== batch.cache || PROMPTUTOR_PRIVACY.owner({ user }) !== account) continue;
+      const sent = new Set(batch.messages);
+      batch.cache.messages = batch.cache.messages.filter(message => !sent.has(message));
+    }
+    const update = { conversationCache };
+    if (data.total != null && PROMPTUTOR_PRIVACY.owner({ user }) === account) update.uploadedCount = data.total;
+    await chrome.storage.local.set(update);
+    return { success: true, synced: messages.length, total: data.total };
+  } catch (e) {
+    return { success: false, error: e.message, synced: 0 };
+  }
 }
 
 // ==================== GUIDANCE ====================
 
-async function handleDetect({ message, platform, url }) {
-  try {
-    const response = await backendFetch(`${CONFIG.apiEndpoint}/api/detect`, {
-      method: 'POST',
-      body: JSON.stringify({ message, platform, context: { url } }),
-    }, () => canCollect(url));
-    if (!response.ok) return null;
-    return await response.json();
-  } catch (e) {
-    console.error('[PrompTutor] Detect proxy error:', e);
-    return null;
-  }
+function handleDetect({ message, platform, url }) {
+  const guard = collectionGuard(url);
+  return serializeNetwork(async () => {
+    try {
+      const response = await backendFetch(`${CONFIG.apiEndpoint}/api/detect`, {
+        method: 'POST',
+        body: JSON.stringify({ message, platform, context: { url } }),
+      }, guard);
+      if (!response.ok || !guard()) return null;
+      const result = await response.json();
+      return guard() ? result : null;
+    } catch (e) {
+      console.error('[PrompTutor] Detect proxy error:', e);
+      return null;
+    }
+  });
 }
 
-async function handleLogGuidance(data) {
-  try {
-    await backendFetch(`${CONFIG.apiEndpoint}/api/guidance-log`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }, () => canCollect(data.url));
-  } catch (e) {
-    console.error('[PrompTutor] Guidance log proxy error:', e);
-  }
+function handleLogGuidance(data) {
+  const guard = collectionGuard(data.url);
+  return serializeNetwork(async () => {
+    try {
+      const response = await backendFetch(`${CONFIG.apiEndpoint}/api/guidance-log`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }, guard);
+      return guard() && response.ok;
+    } catch (e) {
+      console.error('[PrompTutor] Guidance log proxy error:', e);
+    }
+  });
 }

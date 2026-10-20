@@ -89,3 +89,57 @@ test('pagination rejects malformed, negative, excessive and repeated values', as
     assert.equal(res.status, 400, query);
   }
 });
+
+
+for (const id of ['fixture_a', 'fixture%a']) for (const requestSuffix of ['', '/?source=delete#section']) {
+  test(`conversation deletion matches literal identity and boundaries (${id}${requestSuffix})`, async t => {
+    const { base, db } = await local(t);
+    const a = userId('a@example.test'), b = userId('b@example.test');
+    const target = `https://claude.ai/chat/${id}`;
+    const related = ['', '?x=1', '#section', '/', '/?x=1', '/branch'].map(suffix => target + suffix);
+    const siblings = [target + '-sibling', target + 'more', target.replace(id, 'fixtureXa'), target.toUpperCase()];
+    const rows = [...related.map(url => ({ user_id: a, url })), ...siblings.map(url => ({ user_id: a, url })), ...related.map(url => ({ user_id: b, url }))];
+    for (const table of ['message_logs', 'guidance_logs']) await db(table).insert(rows.map(row => ({ ...row,
+      ...(table === 'message_logs' ? { message_text: 'fixture' } : { original_message: 'fixture' })
+    })));
+    const response = await fetch(base + '/api/conversation', { method: 'DELETE', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ url: target + requestSuffix }) });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { success: true, deleted: related.length, deletedGuidance: related.length });
+    for (const table of ['message_logs', 'guidance_logs']) {
+      assert.deepEqual((await db(table).where('user_id', a)).map(row => row.url).sort(), siblings.slice().sort(), `${table}: sibling URLs preserved`);
+      assert.deepEqual((await db(table).where('user_id', b)).map(row => row.url).sort(), related.slice().sort(), `${table}: other account preserved`);
+    }
+  });
+}
+
+for (const route of ['/api/my-chats', '/api/conversation']) {
+  test(`${route} deletes user-scoped guidance prompts with accurate independent counters`, async t => {
+    const { base, db } = await local(t);
+    const a = userId('a@example.test'), b = userId('b@example.test');
+    const rows = [{ user_id: a, url: 'https://chat.test/one' }, { user_id: a, url: 'https://chat.test/one?x=1' }, { user_id: a, url: 'https://chat.test/other' }, { user_id: b, url: 'https://chat.test/one' }];
+    await db('message_logs').insert(rows.map(row => ({ ...row, message_text: 'private message' })));
+    await db('guidance_logs').insert([...rows, rows[0]].map(row => ({ ...row, original_message: 'original private', final_message: 'final private' })));
+    const remove = () => fetch(base + route, { method: 'DELETE', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'https://chat.test/one' }) });
+    const res = await remove(); assert.equal(res.status, 200);
+    const all = route === '/api/my-chats';
+    assert.deepEqual(await res.json(), { success: true, deleted: all ? 3 : 2, deletedGuidance: all ? 4 : 3 });
+    for (const table of ['message_logs', 'guidance_logs']) {
+      assert.equal((await db(table).where('user_id', b)).length, 1, 'other user preserved');
+      const own = await db(table).where('user_id', a);
+      assert.equal(own.length, all ? 0 : 1);
+      if (!all) assert.equal(own[0].url, 'https://chat.test/other');
+    }
+    assert.deepEqual(await (await remove()).json(), { success: true, deleted: 0, deletedGuidance: 0 });
+  });
+  test(`${route} rolls back messages if guidance deletion fails`, async t => {
+    const { base, db } = await local(t);
+    const row = { user_id: userId('a@example.test'), url: 'https://chat.test/one' };
+    await db('message_logs').insert({ ...row, message_text: 'message' });
+    await db('guidance_logs').insert({ ...row, original_message: 'prompt' });
+    await db.raw("CREATE TRIGGER fail_guidance_delete BEFORE DELETE ON guidance_logs BEGIN SELECT RAISE(ABORT, 'test rollback'); END");
+    const response = await fetch(base + route, { method: 'DELETE', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ url: row.url }) });
+    assert.equal(response.status, 500);
+    assert.equal((await db('message_logs')).length, 1);
+    assert.equal((await db('guidance_logs')).length, 1);
+  });
+}

@@ -5,9 +5,51 @@ let visibleCount = LIMIT;
 let loading = false;
 let sessionKey = null;
 const expanded = new Set();
+let generation = 0;
+
+// A generation fences responses even when credentials change A → B → A.
+const SESSION_FIELDS = ['accessToken', 'apiEndpoint', 'user'];
+const controllers = new Set();
+function sessionIdentity(stored) {
+  return JSON.stringify([stored.apiEndpoint || CONFIG.apiEndpoint, stored.accessToken || null, stored.user?.email || null]);
+}
+function invalidateSession() {
+  ++generation;
+  sessionKey = null;
+  for (const controller of controllers) controller.abort();
+  controllers.clear();
+  clearPrivateData();
+  document.getElementById('error').textContent = '';
+  document.getElementById('refreshStatus').textContent = 'Session changed. Refresh to continue.';
+  loading = false;
+}
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && SESSION_FIELDS.some(key => Object.hasOwn(changes, key))) invalidateSession();
+});
+async function currentSession(run, stored) {
+  const current = await chrome.storage.local.get(SESSION_FIELDS);
+  if (run !== generation) return false;
+  if (sessionIdentity(current) !== sessionIdentity(stored)) { invalidateSession(); return false; }
+  return true;
+}
+async function privateRequest(url, stored) {
+  const controller = new AbortController();
+  controllers.add(controller);
+  try {
+    const res = await fetch(url, {
+      cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
+      headers: { Authorization: `Bearer ${stored.accessToken}` }
+    });
+    if (!res.ok) {
+      const error = new Error(res.status === 401 ? 'Session expired. Sign in again via the extension popup.' : res.status === 403 ? 'Admin access required.' : `HTTP ${res.status}`);
+      error.status = res.status; throw error;
+    }
+    return await res.json();
+  } finally { controllers.delete(controller); }
+}
 
 async function init() {
-  const stored = await chrome.storage.local.get(['accessToken', 'apiEndpoint']);
+  const stored = await chrome.storage.local.get(SESSION_FIELDS);
   if (!stored.accessToken) { clearPrivateData(); showError('Not signed in. Please sign in via the PrompTutor extension popup.'); return; }
   document.getElementById('loadMoreBtn').addEventListener('click', () => refreshChats(true));
   document.getElementById('refreshBtn').addEventListener('click', () => refreshChats());
@@ -19,11 +61,14 @@ async function init() {
 async function refreshChats(more = false) {
   if (loading) return;
   loading = true;
+  const run = ++generation;
   document.getElementById('loadMoreBtn').disabled = true;
   document.getElementById('refreshStatus').textContent = 'Refreshing…';
+  let stored;
   try {
-    const stored = await chrome.storage.local.get(['accessToken', 'apiEndpoint']);
-    const nextSession = `${stored.apiEndpoint || CONFIG.apiEndpoint}:${stored.accessToken || ''}`;
+    stored = await chrome.storage.local.get(SESSION_FIELDS);
+    if (run !== generation) return;
+    const nextSession = sessionIdentity(stored);
     if (sessionKey && sessionKey !== nextSession) clearPrivateData();
     sessionKey = nextSession;
     if (!stored.accessToken) { const error = new Error('Not signed in. Sign in again via the extension popup.'); error.status = 401; throw error; }
@@ -32,18 +77,13 @@ async function refreshChats(more = false) {
     let total = 0;
     // Re-read every visible page so new/deleted conversations do not duplicate stale pages.
     for (let offset = 0; offset < target; offset += LIMIT) {
-      const res = await fetch(`${stored.apiEndpoint || CONFIG.apiEndpoint}/api/my-chats?limit=${LIMIT}&offset=${offset}&includeData=1`, {
-        cache: 'no-store', signal: AbortSignal.timeout(10000), headers: { Authorization: `Bearer ${stored.accessToken}` }
-      });
-      if (!res.ok) {
-        const error = new Error(res.status === 401 ? 'Session expired. Sign in again via the extension popup.' : `HTTP ${res.status}`);
-        error.status = res.status; throw error;
-      }
-      const data = await res.json();
+      if (!await currentSession(run, stored) || run !== generation) return;
+      const data = await privateRequest(`${stored.apiEndpoint || CONFIG.apiEndpoint}/api/my-chats?limit=${LIMIT}&offset=${offset}&includeData=1`, stored);
       total = Number(data.total);
       logs.push(...data.logs);
       if (offset + data.logs.length >= total || data.logs.length < LIMIT) break;
     }
+    if (!await currentSession(run, stored) || run !== generation) return;
     const unique = new Map(logs.map(log => [chatKey(log), log]));
     renderChats([...unique.values()]);
     visibleCount = Math.max(LIMIT, unique.size);
@@ -52,12 +92,15 @@ async function refreshChats(more = false) {
     document.getElementById('error').style.display = 'none';
     document.getElementById('refreshStatus').textContent = `Updated ${new Date().toLocaleTimeString()} · auto-refresh 15s`;
   } catch (error) {
+    if (!stored || !await currentSession(run, stored) || run !== generation) return;
     if (error.status === 401 || error.status === 403) clearPrivateData();
     showError(error.message);
     document.getElementById('refreshStatus').textContent = 'Refresh failed; retrying every 15s. Displayed data may be stale.';
   } finally {
-    loading = false;
-    document.getElementById('loadMoreBtn').disabled = false;
+    if (run === generation) {
+      loading = false;
+      document.getElementById('loadMoreBtn').disabled = false;
+    }
   }
 }
 function chatKey(log) { return JSON.stringify([log.chat_id, log.url, log.platform]); }
@@ -102,29 +145,27 @@ function renderChats(logs) {
 }
 // Compatibility with an existing server that does not yet embed conversation rows.
 async function loadLegacyMessages(log, el) {
-  if (!log.chat_id) { el.textContent = 'Details for conversations without a chat ID require the updated backend.'; return; }
   if (el.dataset.loading === 'true') return;
+  const run = generation;
+  let stored;
   el.dataset.loading = 'true';
-  el.textContent = 'Loading…';
   try {
-    const stored = await chrome.storage.local.get(['accessToken', 'apiEndpoint']);
-    const nextSession = `${stored.apiEndpoint || CONFIG.apiEndpoint}:${stored.accessToken || ''}`;
-    if (sessionKey && sessionKey !== nextSession) clearPrivateData();
-    sessionKey = nextSession;
-    if (!stored.accessToken) { clearPrivateData(); showError('Not signed in.'); return; }
-    const res = await fetch(`${stored.apiEndpoint || CONFIG.apiEndpoint}/api/chat/${encodeURIComponent(log.chat_id)}`, {
-      cache: 'no-store', signal: AbortSignal.timeout(10000), headers: { Authorization: `Bearer ${stored.accessToken}` }
-    });
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) clearPrivateData();
-      throw new Error(`HTTP ${res.status}`);
-    }
-    const rows = await res.json();
+    stored = await chrome.storage.local.get(SESSION_FIELDS);
+    if (!await currentSession(run, stored) || run !== generation || !el.isConnected) return;
+    if (sessionIdentity(stored) !== sessionKey || !stored.accessToken) { invalidateSession(); return; }
+    if (!log.chat_id) { el.textContent = 'Details for conversations without a chat ID require the updated backend.'; return; }
+    el.textContent = 'Loading…';
+    const rows = await privateRequest(`${stored.apiEndpoint || CONFIG.apiEndpoint}/api/chat/${encodeURIComponent(log.chat_id)}`, stored);
+    if (!await currentSession(run, stored) || run !== generation || !el.isConnected) return;
     el.innerHTML = rows.map(row => `<div class="message user"><div class="message-label">You</div>${escapeHtml(row.message_text || '')}</div>
       ${row.assistant_response ? `<div class="message assistant"><div class="message-label">Assistant</div>${escapeHtml(row.assistant_response)}</div>` : ''}`).join('');
-  } catch (error) { el.textContent = `Failed to load messages: ${error.message}`; }
-  finally { el.dataset.loading = 'false'; }
+  } catch (error) {
+    if (!stored || !await currentSession(run, stored) || run !== generation || !el.isConnected) return;
+    if (error.status === 401 || error.status === 403) { invalidateSession(); return; }
+    el.textContent = `Failed to load messages: ${error.message}`;
+  } finally { el.dataset.loading = 'false'; }
 }
+
 function showError(msg) { const el = document.getElementById('error'); el.textContent = msg; el.style.display = 'block'; }
 function formatDate(iso) {
   return iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';

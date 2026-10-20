@@ -7,8 +7,49 @@ let refreshing = false;
 let generation = 0;
 let sessionKey = null;
 
+// A generation fences responses even when credentials change A → B → A.
+const SESSION_FIELDS = ['accessToken', 'apiEndpoint', 'user'];
+const controllers = new Set();
+function sessionIdentity(stored) {
+  return JSON.stringify([stored.apiEndpoint || CONFIG.apiEndpoint, stored.accessToken || null, stored.user?.email || null]);
+}
+function invalidateSession() {
+  ++generation;
+  sessionKey = null;
+  for (const controller of controllers) controller.abort();
+  controllers.clear();
+  clearPrivateData();
+  document.getElementById('error').textContent = '';
+  document.getElementById('refreshStatus').textContent = 'Session changed. Refresh to continue.';
+  refreshing = false;
+}
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && SESSION_FIELDS.some(key => Object.hasOwn(changes, key))) invalidateSession();
+});
+async function currentSession(run, stored) {
+  const current = await chrome.storage.local.get(SESSION_FIELDS);
+  if (run !== generation) return false;
+  if (sessionIdentity(current) !== sessionIdentity(stored)) { invalidateSession(); return false; }
+  return true;
+}
+async function privateRequest(url, stored) {
+  const controller = new AbortController();
+  controllers.add(controller);
+  try {
+    const res = await fetch(url, {
+      cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
+      headers: { Authorization: `Bearer ${stored.accessToken}` }
+    });
+    if (!res.ok) {
+      const error = new Error(res.status === 401 ? 'Session expired. Sign in again via the extension popup.' : res.status === 403 ? 'Admin access required.' : `HTTP ${res.status}`);
+      error.status = res.status; throw error;
+    }
+    return await res.json();
+  } finally { controllers.delete(controller); }
+}
+
 async function init() {
-  const stored = await chrome.storage.local.get(['accessToken', 'apiEndpoint']);
+  const stored = await chrome.storage.local.get(SESSION_FIELDS);
   if (!stored.accessToken) { showError('Not signed in. Please sign in via the PrompTutor extension popup.'); return; }
   document.getElementById('applyFilter').addEventListener('click', () => {
     currentPlatform = document.getElementById('filterPlatform').value;
@@ -27,15 +68,7 @@ async function init() {
 }
 
 async function request(route, stored) {
-  const res = await fetch(`${stored.apiEndpoint || CONFIG.apiEndpoint}${route}`, {
-    cache: 'no-store', signal: AbortSignal.timeout(10000),
-    headers: { Authorization: `Bearer ${stored.accessToken}` }
-  });
-  if (!res.ok) {
-    const error = new Error(res.status === 401 ? 'Session expired. Sign in again via the extension popup.' : res.status === 403 ? 'Admin access required.' : `HTTP ${res.status}`);
-    error.status = res.status; throw error;
-  }
-  return res.json();
+  return privateRequest(`${stored.apiEndpoint || CONFIG.apiEndpoint}${route}`, stored);
 }
 
 async function refreshDashboard(force = false) {
@@ -44,9 +77,11 @@ async function refreshDashboard(force = false) {
   const run = ++generation;
   const pageOffset = offset, platform = currentPlatform;
   document.getElementById('refreshStatus').textContent = 'Refreshing…';
+  let stored;
   try {
-    const stored = await chrome.storage.local.get(['accessToken', 'apiEndpoint']);
-    const nextSession = `${stored.apiEndpoint || CONFIG.apiEndpoint}:${stored.accessToken || ''}`;
+    stored = await chrome.storage.local.get(SESSION_FIELDS);
+    if (run !== generation) return;
+    const nextSession = sessionIdentity(stored);
     if (sessionKey && sessionKey !== nextSession) clearPrivateData();
     sessionKey = nextSession;
     if (!stored.accessToken) { const error = new Error('Not signed in. Sign in again via the extension popup.'); error.status = 401; throw error; }
@@ -55,7 +90,7 @@ async function refreshDashboard(force = false) {
     const [stats, data] = await Promise.all([
       request('/api/admin/stats', stored), request(`/api/admin/chats?${params}`, stored)
     ]);
-    if (run !== generation) return;
+    if (!await currentSession(run, stored) || run !== generation) return;
     if (pageOffset > 0 && pageOffset >= data.total) {
       offset = Math.max(0, Math.floor((data.total - 1) / LIMIT) * LIMIT);
       return await refreshDashboard(true);
@@ -66,7 +101,7 @@ async function refreshDashboard(force = false) {
     document.getElementById('error').classList.add('hidden');
     document.getElementById('refreshStatus').textContent = `Updated ${new Date().toLocaleTimeString()} · auto-refresh 15s`;
   } catch (error) {
-    if (run !== generation) return;
+    if (!stored || !await currentSession(run, stored) || run !== generation) return;
     if (error.status === 401 || error.status === 403) clearPrivateData();
     showError(error.message);
     document.getElementById('refreshStatus').textContent = 'Refresh failed; retrying every 15s. Displayed data may be stale.';

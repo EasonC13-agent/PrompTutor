@@ -11,6 +11,14 @@ test('manifest grants production/OAuth access and loads privacy policy before co
   for (const host of ['https://chat-collector.eason.phd/*', 'https://www.googleapis.com/*', 'https://accounts.google.com/*']) assert.ok(manifest.host_permissions?.includes(host), host);
   for (const entry of manifest.content_scripts) assert.equal(entry.js[0], 'src/privacy.js');
 });
+test('developer package retains the historical OAuth redirect identity', () => {
+  const { createHash } = require('node:crypto');
+  const manifest = JSON.parse(read('manifest.json'));
+  assert.ok(manifest.key, 'An unkeyed unpacked install changes its OAuth redirect ID with the install path');
+  const hex = createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32);
+  const id = [...hex].map(digit => String.fromCharCode(97 + parseInt(digit, 16))).join('');
+  assert.equal(id, 'linjhjneagnaggeeljkgdjdlbldpdhhk');
+});
 test('fixture: overlay does not present global enable as conversation consent', async () => {
   const dom = new JSDOM('<main></main>', { url: 'https://chatgpt.com/c/fixture-a', runScripts: 'outside-only' });
   const sent = [];
