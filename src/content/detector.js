@@ -155,18 +155,14 @@
     console.log('[PrompTutor] ccAnalyzeAndGuide called, isProcessing:', isProcessing);
     if (isProcessing) return;
 
-    if (!skipChecks) {
-      const stored = await chrome.storage.local.get(['enabled']);
-      if (!stored.enabled || mode !== 'guidance') {
-        console.log('[PrompTutor] Not enabled or not guidance mode');
-        return;
-      }
-    }
+    // Recheck even when called from the overlay: cached UI state is not consent.
+    const stored = await chrome.storage.local.get(['enabled', 'accessToken', 'user', 'conversationConsents', 'mode']);
+    if (!PROMPTUTOR_PRIVACY.allowed(stored, location.href) || stored.mode !== 'guidance') return;
 
     const input = getChatInput();
     console.log('[PrompTutor] Input element:', input?.tagName, input?.id);
     const text = getInputText(input).trim();
-    console.log('[PrompTutor] Input text length:', text.length, 'text:', text.substring(0, 50));
+
 
     if (!text || text.length < 5) {
       if (typeof window.ccGuidanceShowChecking === 'function') {
@@ -187,7 +183,7 @@
 
     console.log('[PrompTutor] Calling detect API...');
     const result = await detectAnswerSeeking(text);
-    console.log('[PrompTutor] Detect result:', result);
+
 
     if (typeof window.ccGuidanceHideChecking === 'function') {
       window.ccGuidanceHideChecking();

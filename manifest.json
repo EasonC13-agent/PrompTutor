@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PrompTutor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Optionally share your AI chat logs with researchers for educational research.",
   "permissions": [
     "storage",
@@ -17,6 +17,11 @@
       "profile"
     ]
   },
+  "host_permissions": [
+    "https://chat-collector.eason.phd/*",
+    "https://www.googleapis.com/*",
+    "https://accounts.google.com/*"
+  ],
   "background": {
     "service_worker": "src/background/index.js"
   },
@@ -38,6 +43,7 @@
         "https://huggingface.co/chat/*"
       ],
       "js": [
+        "src/privacy.js",
         "src/content/dom-parser.js"
       ],
       "run_at": "document_idle"
@@ -59,6 +65,7 @@
         "https://huggingface.co/chat/*"
       ],
       "js": [
+        "src/privacy.js",
         "src/content/overlay.js"
       ],
       "run_at": "document_idle"
@@ -80,6 +87,7 @@
         "https://huggingface.co/chat/*"
       ],
       "js": [
+        "src/privacy.js",
         "src/content/guidance.js",
         "src/content/detector.js"
       ],

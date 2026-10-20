@@ -309,6 +309,22 @@
   let debounceTimer = null;
   let lastContentLength = 0;
   let isEnabled = false;
+  let privacyState = {};
+  let activeConversation = PROMPTUTOR_PRIVACY.conversationUrl(location.href);
+  let previousRoots = [];
+  let staleRoots = [];
+  function refreshRoute() {
+    const current = PROMPTUTOR_PRIVACY.conversationUrl(location.href);
+    if (current === activeConversation) return;
+    activeConversation = current;
+    staleRoots = previousRoots;
+    previousRoots = [];
+    lastSnapshot = null;
+    lastSnapshotHash = null;
+    stopCollecting();
+    isEnabled = PROMPTUTOR_PRIVACY.allowed(privacyState, location.href);
+    if (isEnabled) startCollecting();
+  }
   const seenMessages = new Set();
   const DEBOUNCE_MS = 300;
   
@@ -368,7 +384,8 @@
     // Clone to avoid modifying original
     const clone = el.cloneNode(true);
     // Remove code block copy buttons, etc
-    clone.querySelectorAll('button, [aria-hidden="true"]').forEach(e => e.remove());
+    clone.querySelectorAll('button, [aria-hidden="true"], script, style, [contenteditable="true"]').forEach(e => e.remove());
+    clone.querySelectorAll('p, pre, li, h1, h2, h3, blockquote, br').forEach(e => e.appendChild(document.createTextNode('\n')));
     return clone.textContent?.trim() || '';
   }
   
@@ -377,6 +394,23 @@
     const sel = SELECTORS[platform];
     if (!sel) return [];
     
+    if (platform === 'chatgpt' || platform === 'claude') {
+      const userSelector = platform === 'chatgpt' ? '[data-message-author-role="user"]' : '[data-user-message-bubble="true"], [data-testid="user-message"], .font-user-message';
+      const assistantSelector = platform === 'chatgpt' ? '[data-message-author-role="assistant"]' : '[data-testid="assistant-message"], .font-claude-response';
+      const roots = `${userSelector}, ${assistantSelector}`;
+      const scope = document.querySelector('main, [role="main"]');
+      if (!scope) return [];
+      return Array.from(scope.querySelectorAll(roots))
+        .filter(el => !el.parentElement.closest(roots) && !el.closest('[contenteditable="true"], [aria-hidden="true"]'))
+        .map(el => {
+          const role = el.matches(userSelector) ? 'user' : 'assistant';
+          const body = platform === 'chatgpt'
+            ? el.querySelector('[data-message-content], .whitespace-pre-wrap, .markdown, .prose')
+            : el.querySelector('.font-claude-response-body');
+          const content = extractText(body || el);
+          return { role, content, hash: hashString(`${role}:${content}`), timestamp: Date.now() };
+        }).filter(m => m.content);
+    }
     const messages = [];
     
     // Get all message containers
@@ -455,30 +489,24 @@
     };
     
     // Hash for comparison
-    const snapshotHash = hashString(JSON.stringify(messages.map(m => m.content)));
+    const snapshotHash = JSON.stringify(messages.map(m => [m.role, m.content]));
     
     return { snapshot, hash: snapshotHash };
   }
   
   // Check for changes and send to extension
   function checkForChanges() {
+    refreshRoute();
+    if (staleRoots.some(node => node.isConnected)) return;
+    if (!PROMPTUTOR_PRIVACY.allowed(privacyState, location.href) || isStreaming()) return;
     const result = takeSnapshot();
     if (!result) return;
     
     const { snapshot, hash } = result;
+    previousRoots = Array.from(document.querySelectorAll('[data-message-author-role], [data-user-message-bubble], [data-testid="user-message"], [data-testid="assistant-message"], .font-claude-response'));
     
     // Skip if no change
     if (hash === lastSnapshotHash) return;
-    
-    // Find new messages
-    const newMessages = snapshot.messages.filter(m => !seenMessages.has(m.hash));
-    
-    if (newMessages.length === 0 && lastSnapshot) return;
-    
-    // Mark as seen
-    newMessages.forEach(m => seenMessages.add(m.hash));
-    
-    console.log('[PrompTutor DOM] Detected', newMessages.length, 'new messages');
     
     // Send to extension
     sendToExtension({
@@ -486,17 +514,18 @@
       url: snapshot.url,
       platform: snapshot.platform,
       title: snapshot.title,
-      messages: newMessages.length > 0 ? newMessages : snapshot.messages,
+      messages: snapshot.messages,
       fullConversation: snapshot.messages,
-      isIncremental: lastSnapshot !== null && newMessages.length > 0
+      isIncremental: false
+    }, () => {
+      if (PROMPTUTOR_PRIVACY.conversationUrl(location.href) !== PROMPTUTOR_PRIVACY.conversationUrl(snapshot.url) || !PROMPTUTOR_PRIVACY.allowed(privacyState, location.href)) return;
+      lastSnapshot = snapshot;
+      lastSnapshotHash = hash;
     });
-    
-    lastSnapshot = snapshot;
-    lastSnapshotHash = hash;
   }
   
   // Send data to extension directly (we're in isolated world, can use chrome API)
-  function sendToExtension(payload) {
+  function sendToExtension(payload, onAccepted) {
     // Check if extension context is still valid
     if (!chrome?.runtime?.id) {
       console.log('[PrompTutor DOM] Extension context invalid, skipping send');
@@ -512,10 +541,8 @@
         }
       }, (response) => {
         // Check for error in callback
-        if (chrome.runtime.lastError) {
-          // Silently ignore - extension was reloaded
-          return;
-        }
+        if (chrome.runtime.lastError || !response?.accepted) return;
+        onAccepted();
       });
     } catch (e) {
       // Silently ignore extension context errors
@@ -529,7 +556,7 @@
   function isStreaming() {
     if (platform === 'claude') return !!document.querySelector('[data-is-streaming="true"]');
     // ChatGPT: data-stream-active="" during stream, data-stream-active="null" when done
-    if (platform === 'chatgpt') return !!document.querySelector('[data-stream-active]:not([data-stream-active="null"])');
+    if (platform === 'chatgpt') return !!document.querySelector('[data-stream-active]:not([data-stream-active="null"]):not([data-stream-active="false"]), button[data-testid="stop-button"]');
     // Fallback: detect via content length change
     const len = document.body.innerText.length;
     if (len !== lastContentLength) { lastContentLength = len; return true; }
@@ -634,34 +661,26 @@
   function init() {
     console.log('[PrompTutor DOM] Initializing for', platform);
 
-    chrome.storage.local.get(['enabled', 'accessToken'], (stored) => {
-      isEnabled = !!(stored.enabled && stored.accessToken);
+    chrome.storage.local.get(['enabled', 'accessToken', 'user', 'conversationConsents'], (stored) => {
+      privacyState = stored;
+      isEnabled = PROMPTUTOR_PRIVACY.allowed(privacyState, location.href);
       if (isEnabled) setTimeout(startCollecting, 500);
     });
 
-    chrome.storage.onChanged.addListener((changes) => {
-      const prevEnabled = isEnabled;
-      if (changes.enabled) isEnabled = changes.enabled.newValue;
-      if (changes.accessToken) isEnabled = isEnabled && !!changes.accessToken.newValue;
-
-      if (!prevEnabled && isEnabled) {
-        startCollecting();
-      } else if (prevEnabled && !isEnabled) {
-        stopCollecting();
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area && area !== 'local') return;
+      for (const key of ['enabled', 'accessToken', 'user', 'conversationConsents']) {
+        if (changes[key]) privacyState[key] = changes[key].newValue;
       }
+      const wasEnabled = isEnabled;
+      isEnabled = PROMPTUTOR_PRIVACY.allowed(privacyState, location.href);
+      if (isEnabled && !wasEnabled) startCollecting();
+      if (!isEnabled) stopCollecting();
     });
 
-    // Re-init on SPA navigation
-    navigation.addEventListener('navigate', () => {
-      if (!isEnabled) return;
-      setTimeout(() => {
-        seenMessages.clear();
-        lastSnapshot = null;
-        lastSnapshotHash = null;
-        checkForChanges();
-        setupObserver();
-      }, 1000);
-    });
+    // Poll as a fallback; Navigation API is not available in every browser.
+    globalThis.navigation?.addEventListener('navigatesuccess', refreshRoute);
+    setInterval(refreshRoute, 500);
   }
 
   // Start

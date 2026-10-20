@@ -1,33 +1,14 @@
-#!/bin/bash
-# Build script for Chrome Web Store
-set -e
-
+#!/usr/bin/env bash
+# Package only extension runtime assets, never repository/private files.
+set -euo pipefail
 cd "$(dirname "$0")/.."
-
 rm -rf dist/
+rm -f promptutor.zip
 mkdir -p dist/
-
-# Copy needed files, exclude dev/build artifacts
-rsync -av \
-  --exclude='node_modules' \
-  --exclude='.git' \
-  --exclude='test' \
-  --exclude='store' \
-  --exclude='scripts' \
-  --exclude='privacy-policy.html' \
-  --exclude='.gitignore' \
-  --exclude='package*.json' \
-  --exclude='dist' \
-  --exclude='chat-collector.zip' \
-  --exclude='backend' \
-  --exclude='.DS_Store' \
-  --exclude='relay-extension-background.js' \
-  --exclude='README.md' \
-  --exclude='.env*' \
-  --exclude='.github' \
-  . dist/
-
-# Create zip
-cd dist && zip -r ../promptutor.zip . && cd ..
-
-echo "Built: promptutor.zip ($(du -h promptutor.zip | cut -f1))"
+cp manifest.json dist/
+cp -R src icons dist/
+(
+  cd dist
+  zip -qr ../promptutor.zip manifest.json src icons
+)
+printf 'Built: promptutor.zip\n'

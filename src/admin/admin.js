@@ -1,89 +1,97 @@
 const CONFIG = { apiEndpoint: 'https://chat-collector.eason.phd' };
 const LIMIT = 50;
-
-let accessToken = null;
 let offset = 0;
-let totalLogs = 0;
 let currentPlatform = '';
 let expandedRows = new Set();
+let refreshing = false;
+let generation = 0;
+let sessionKey = null;
 
 async function init() {
   const stored = await chrome.storage.local.get(['accessToken', 'apiEndpoint']);
-  if (stored.apiEndpoint) CONFIG.apiEndpoint = stored.apiEndpoint;
-
-  if (!stored.accessToken) {
-    showError('Not signed in. Please sign in via the PrompTutor extension popup.');
-    return;
-  }
-  accessToken = stored.accessToken;
-
+  if (!stored.accessToken) { showError('Not signed in. Please sign in via the PrompTutor extension popup.'); return; }
   document.getElementById('applyFilter').addEventListener('click', () => {
     currentPlatform = document.getElementById('filterPlatform').value;
-    offset = 0;
-    expandedRows.clear();
-    loadLogs();
+    offset = 0; expandedRows.clear(); refreshDashboard(true);
   });
   document.getElementById('prevBtn').addEventListener('click', () => {
-    offset = Math.max(0, offset - LIMIT);
-    expandedRows.clear();
-    loadLogs();
+    offset = Math.max(0, offset - LIMIT); expandedRows.clear(); refreshDashboard(true);
   });
   document.getElementById('nextBtn').addEventListener('click', () => {
-    offset += LIMIT;
-    expandedRows.clear();
-    loadLogs();
+    offset += LIMIT; expandedRows.clear(); refreshDashboard(true);
   });
-
-  await Promise.all([loadStats(), loadLogs()]);
+  document.getElementById('refreshBtn').addEventListener('click', () => refreshDashboard(true));
+  await refreshDashboard();
+  const timer = setInterval(() => refreshDashboard(), 15000);
+  window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
 }
 
-async function loadStats() {
-  try {
-    const res = await fetch(`${CONFIG.apiEndpoint}/api/admin/stats`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (res.status === 403) { showError('Admin access required.'); return; }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json();
-    document.getElementById('statTotal').textContent = data.totalLogs.toLocaleString();
-    document.getElementById('statUsers').textContent = data.totalUsers.toLocaleString();
-
-    document.getElementById('platformBody').innerHTML = data.byPlatform
-      .sort((a, b) => Number(b.log_count) - Number(a.log_count))
-      .map(p => `
-        <tr>
-          <td><span class="platform-tag">${esc(p.platform)}</span></td>
-          <td>${Number(p.log_count).toLocaleString()}</td>
-          <td>${Number(p.user_count).toLocaleString()}</td>
-          <td>${formatDate(p.first_capture)}</td>
-          <td>${formatDate(p.last_capture)}</td>
-        </tr>
-      `).join('') || '<tr><td colspan="5" style="color:#aaa;padding:16px">No data</td></tr>';
-  } catch (e) {
-    showError(e.message);
+async function request(route, stored) {
+  const res = await fetch(`${stored.apiEndpoint || CONFIG.apiEndpoint}${route}`, {
+    cache: 'no-store', signal: AbortSignal.timeout(10000),
+    headers: { Authorization: `Bearer ${stored.accessToken}` }
+  });
+  if (!res.ok) {
+    const error = new Error(res.status === 401 ? 'Session expired. Sign in again via the extension popup.' : res.status === 403 ? 'Admin access required.' : `HTTP ${res.status}`);
+    error.status = res.status; throw error;
   }
+  return res.json();
 }
 
-async function loadLogs() {
-  const params = new URLSearchParams({ limit: LIMIT, offset });
-  if (currentPlatform) params.set('platform', currentPlatform);
-
+async function refreshDashboard(force = false) {
+  if (refreshing && !force) return;
+  refreshing = true;
+  const run = ++generation;
+  const pageOffset = offset, platform = currentPlatform;
+  document.getElementById('refreshStatus').textContent = 'Refreshing…';
   try {
-    const res = await fetch(`${CONFIG.apiEndpoint}/api/admin/chats?${params}`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (res.status === 403) { showError('Admin access required.'); return; }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json();
-    totalLogs = data.total;
-
+    const stored = await chrome.storage.local.get(['accessToken', 'apiEndpoint']);
+    const nextSession = `${stored.apiEndpoint || CONFIG.apiEndpoint}:${stored.accessToken || ''}`;
+    if (sessionKey && sessionKey !== nextSession) clearPrivateData();
+    sessionKey = nextSession;
+    if (!stored.accessToken) { const error = new Error('Not signed in. Sign in again via the extension popup.'); error.status = 401; throw error; }
+    const params = new URLSearchParams({ limit: LIMIT, offset: pageOffset });
+    if (platform) params.set('platform', platform);
+    const [stats, data] = await Promise.all([
+      request('/api/admin/stats', stored), request(`/api/admin/chats?${params}`, stored)
+    ]);
+    if (run !== generation) return;
+    if (pageOffset > 0 && pageOffset >= data.total) {
+      offset = Math.max(0, Math.floor((data.total - 1) / LIMIT) * LIMIT);
+      return await refreshDashboard(true);
+    }
+    renderStats(stats);
     renderLogs(data.logs);
     updatePagination(data.logs.length, data.total);
-  } catch (e) {
-    showError(e.message);
+    document.getElementById('error').classList.add('hidden');
+    document.getElementById('refreshStatus').textContent = `Updated ${new Date().toLocaleTimeString()} · auto-refresh 15s`;
+  } catch (error) {
+    if (run !== generation) return;
+    if (error.status === 401 || error.status === 403) clearPrivateData();
+    showError(error.message);
+    document.getElementById('refreshStatus').textContent = 'Refresh failed; retrying every 15s. Displayed data may be stale.';
+  } finally {
+    if (run === generation) refreshing = false;
   }
+}
+
+function clearPrivateData() {
+  for (const id of ['logsBody', 'platformBody']) document.getElementById(id).innerHTML = '';
+  for (const id of ['statTotal', 'statUsers', 'statLatest']) document.getElementById(id).textContent = '—';
+  document.getElementById('pageInfo').textContent = '';
+  document.getElementById('prevBtn').disabled = true;
+  document.getElementById('nextBtn').disabled = true;
+  expandedRows.clear();
+}
+
+function renderStats(data) {
+  document.getElementById('statTotal').textContent = Number(data.totalLogs).toLocaleString();
+  document.getElementById('statUsers').textContent = Number(data.totalUsers).toLocaleString();
+  const latest = data.latestCapturedAt || data.byPlatform.map(p => p.last_capture).filter(Boolean).sort().at(-1);
+  document.getElementById('statLatest').textContent = latest ? new Date(latest).toLocaleString() : 'No captures';
+  document.getElementById('platformBody').innerHTML = data.byPlatform
+    .sort((a, b) => Number(b.log_count) - Number(a.log_count))
+    .map(p => `<tr><td><span class="platform-tag">${esc(p.platform)}</span></td><td>${Number(p.log_count).toLocaleString()}</td><td>${Number(p.user_count).toLocaleString()}</td><td>${formatDate(p.first_capture)}</td><td>${formatDate(p.last_capture)}</td></tr>`).join('') || '<tr><td colspan="5">No data</td></tr>';
 }
 
 function renderLogs(logs) {
@@ -95,7 +103,7 @@ function renderLogs(logs) {
 
   tbody.innerHTML = '';
   logs.forEach((log, i) => {
-    const rowId = `row-${offset + i}`;
+    const rowId = String(log.id);
     const tr = document.createElement('tr');
     tr.className = 'expandable';
     tr.dataset.id = rowId;
@@ -108,7 +116,7 @@ function renderLogs(logs) {
     `;
 
     const detailTr = document.createElement('tr');
-    detailTr.className = 'detail-row hidden';
+    detailTr.className = expandedRows.has(rowId) ? 'detail-row' : 'detail-row hidden';
     detailTr.dataset.detail = rowId;
     detailTr.innerHTML = `
       <td colspan="5">
@@ -165,4 +173,4 @@ function esc(str) {
   return d.innerHTML;
 }
 
-init();
+init().catch(error => showError(error.message));
