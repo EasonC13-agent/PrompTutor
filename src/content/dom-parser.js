@@ -430,6 +430,53 @@
           return { role, content, hash: hashString(`${role}:${content}`), timestamp: Date.now() };
         }).filter(m => m.content);
     }
+    // Gemini/Grok: strictly role-labelled roots only. An element whose role is not
+    // positively identified is skipped rather than guessed as an assistant reply.
+    // Selectors are reconstructed from first-party UI conventions, not live captures.
+    if (platform === 'gemini' || platform === 'grok') {
+      const gemini = platform === 'gemini';
+      const userRoot = gemini ? 'user-query, .user-query-container' : '.message-bubble';
+      const assistantRoot = gemini ? 'model-response, .response-container' : '.message-bubble';
+      const scope = document.querySelector('main, [role="main"]');
+      if (!scope) return [];
+      const roots = gemini ? `${userRoot}, ${assistantRoot}` : userRoot;
+      return Array.from(scope.querySelectorAll(roots))
+        .filter(el => !el.parentElement.closest(roots) && !el.closest('[contenteditable="true"], [aria-hidden="true"]'))
+        .map(el => {
+          let role, body;
+          if (gemini) {
+            role = el.matches(userRoot) ? 'user' : 'assistant';
+            // Observed live: .query-text holds a hidden, truncated duplicate of the prompt
+            // (h5.screen-reader-user-query-label) before the real p.query-text-line nodes.
+            // Never fall back to the whole turn; no recognised body means skip.
+            if (role === 'user') {
+              const text = el.querySelector('.query-text');
+              if (!text) return null;
+              const lines = Array.from(text.querySelectorAll('.query-text-line'));
+              if (lines.length) {
+                const content = lines.map(extractText).join('\n').trim();
+                return content ? { role, content, hash: hashString(`${role}:${content}`), timestamp: Date.now() } : null;
+              }
+              const clone = text.cloneNode(true);
+              clone.querySelectorAll('.screen-reader-user-query-label').forEach(n => n.remove());
+              body = clone;
+            } else {
+              body = el.querySelector('message-content') || el.querySelector('.model-response-text, .markdown');
+              if (!body) return null;
+            }
+          } else {
+            // Nearest side element decides, by exact class tokens only; ambiguous or absent direction is skipped.
+            const side = el.closest('.items-end, .items-start');
+            if (!side) return null;
+            const end = side.classList.contains('items-end'), start = side.classList.contains('items-start');
+            if (end === start) return null;
+            role = end ? 'user' : 'assistant';
+            body = role === 'user' ? null : el.querySelector('.response-content-markdown');
+          }
+          const content = extractText(body || el);
+          return content ? { role, content, hash: hashString(`${role}:${content}`), timestamp: Date.now() } : null;
+        }).filter(Boolean);
+    }
     const messages = [];
     
     // Get all message containers
@@ -522,7 +569,7 @@
     if (!result) return;
     
     const { snapshot, hash } = result;
-    previousRoots = Array.from(document.querySelectorAll('[data-message-author-role], ol[aria-label="Conversation"] > li, [data-user-message-bubble], [data-testid="user-message"], [data-testid="assistant-message"], .font-claude-response'));
+    previousRoots = Array.from(document.querySelectorAll('[data-message-author-role], ol[aria-label="Conversation"] > li, [data-user-message-bubble], [data-testid="user-message"], [data-testid="assistant-message"], .font-claude-response, user-query, model-response, .user-query-container, .response-container, .message-bubble'));
     
     // Skip if no change
     if (hash === lastSnapshotHash) return;
@@ -576,8 +623,13 @@
     if (platform === 'claude') return !!document.querySelector('[data-is-streaming="true"]');
     // ChatGPT: data-stream-active="" during stream, data-stream-active="null" when done
     if (platform === 'chatgpt') return !!document.querySelector('[data-stream-active]:not([data-stream-active="null"]):not([data-stream-active="false"]), button[data-testid="stop-button"]');
+    if (platform === 'gemini' || platform === 'grok') {
+      if (document.querySelector('button[aria-label^="Stop"]')) return true;
+    }
+    // Gemini exposes aria-busy on the reply (observed "false" when complete); "true" is assumed to mean in progress.
+    if (platform === 'gemini' && document.querySelector('model-response [aria-busy="true"]')) return true;
     // Fallback: detect via content length change
-    const len = document.body.innerText.length;
+    const len = (document.body.innerText ?? document.body.textContent).length;
     if (len !== lastContentLength) { lastContentLength = len; return true; }
     return false;
   }

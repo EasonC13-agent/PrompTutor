@@ -390,3 +390,17 @@ test('fixture: in-memory consent changes fence capture before storage change not
   assert.equal(await capture, false);
 });
 module.exports = { background, payload, url, flush };
+
+test('fixture: Gemini and Grok pairs upload with their own platform label, canonical URL and chat id', async () => {
+  for (const [conv, platform, id] of [['https://gemini.google.com/app/a1b2c3d4e5f60718', 'gemini', 'a1b2c3d4e5f60718'], ['https://grok.com/c/3f2b8c1e-5d4a-4e7b-9c10-2a6d8e9f0b1c', 'grok', '3f2b8c1e-5d4a-4e7b-9c10-2a6d8e9f0b1c']]) {
+    const f = await background({ conversationConsents: { [conv]: 'fixture@example.invalid' } });
+    const p = payload(1);
+    const ok = await f.send({ type: 'CHAT_DATA', payload: { ...p, url: `${conv}?q=private`, platform } }, { tab: { url: conv }, url: conv });
+    assert.equal(ok?.accepted, true, conv);
+    await f.send({ type: 'SYNC_NOW' }); await flush();
+    const [pair] = JSON.parse(f.requests[0].body).messages;
+    assert.equal(pair.platform, platform); assert.equal(pair.url, conv); assert.equal(pair.chatId, id);
+    const other = await f.send({ type: 'CHAT_DATA', payload: { ...p, url: conv.replace(/.$/, c => c === '8' ? '9' : '8') } }, { tab: { url: conv }, url: conv });
+    assert.notEqual(other?.accepted, true, 'tab/payload mismatch');
+  }
+});

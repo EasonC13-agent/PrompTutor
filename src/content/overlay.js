@@ -187,7 +187,7 @@
       toggle.className = isEnabled ? 'collecting' : '';
       indicator.className = isEnabled ? 'cc-indicator active' : 'cc-indicator';
       const supported = !!PROMPTUTOR_PRIVACY.conversationUrl(location.href);
-      label.textContent = !supported ? 'Open a ChatGPT / Claude chat' : isEnabled ? (currentMode === 'guidance' ? 'Sharing this chat + Guidance' : 'Sharing this chat') : 'Share this chat';
+      label.textContent = !supported ? 'Open a ChatGPT / Claude / Gemini / Grok chat' : isEnabled ? (currentMode === 'guidance' ? 'Sharing this chat + Guidance' : 'Sharing this chat') : 'Share this chat';
       // Hidden feature: clicking label in guidance mode triggers analysis (no visual hint)
       checkbox.checked = isEnabled;
       checkbox.disabled = !PROMPTUTOR_PRIVACY.conversationUrl(location.href);

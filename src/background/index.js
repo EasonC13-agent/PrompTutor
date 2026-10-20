@@ -264,7 +264,7 @@ async function handleChatData(payload, tabUrl) {
     const digest = await crypto.subtle.digest('SHA-256', bytes);
     if (!guard()) return false;
     const messageHash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-    pairs.push({ platform: new URL(conversationUrl).hostname === 'claude.ai' ? 'claude' : 'chatgpt',
+    pairs.push({ platform: PROMPTUTOR_PRIVACY.platform(conversationUrl),
       url: conversationUrl, chatId: getChatId(conversationUrl), messageText: message.content,
       assistantResponse, messageHash, capturedAt: new Date().toISOString() });
   }
