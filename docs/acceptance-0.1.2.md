@@ -61,6 +61,16 @@ The strict OAuth harness assertion **failed** because it looked for `input[type=
 - No administrator permissions, production deployment, conversation records or Store release were changed. Do not fix this by weakening `adminOnly`, seeding an identity, or silently granting a new account access. The owner must approve the intended effective administrator list and deployment/configuration update; verify real HTTP 200 and rendered researcher statistics afterward.
 - Keep the initiating extension popup alive through a manual OAuth handoff. A previous handoff closed that context before owner completion and did not yield a stored extension identity; that observation alone does not establish a Chrome lifecycle bug.
 
+## Approved production configuration repair — 2026-10-20
+
+The owner approved adding the already signed-in team account to the effective production administrator list and restarting only PrompTutor. The original two administrators were retained. The exact active `/app/.env` and a consistent SQLite backup were saved in an owner-only directory before an atomic configuration edit; no secrets were copied into the repository. PM2 app 0 `promptutor` was restarted through its existing supervisor; the listener's new process remained online on repeat inspection. The backend source SHA-256 remains `75b4916bc101b64fd4b7f5bd1f5a589ee4b187b035786ee53fb3763262c7fe39`: this was a configuration-only repair, not deployment of this PR.
+
+- Real installed researcher and personal dashboards now both passed initial, manual and 15-second automatic refresh. All nine observed API responses were HTTP 200 (`/api/admin/stats`, `/api/admin/chats`, `/api/my-chats`, three refresh phases).
+- The researcher dashboard displayed the existing six stored message records. The old backend still reported zero registered users although read-only SQL finds one distinct message contributor; this known aggregate-definition defect is fixed in the candidate backend but remains undeployed. DOM table-row counts include detail rows and are not message counts.
+- Anonymous researcher API access remains HTTP 401. Readback confirmed all original administrators preserved and only the approved team account added.
+- Production still has 6 message rows / 1 contributor / 0 guidance rows; collection stayed OFF with no pending data. No production conversation was uploaded or deleted.
+- Remaining acceptance: harmless real ChatGPT/Claude persisted conversation capture, authenticated ingestion and new-record visibility; then deliberate candidate-backend deployment and separate extension distribution. Do not treat a configuration-only restart or seeded fixture as those checks.
+
 ## Retained earlier failures
 
 Earlier 0.1.1 candidates were rejected by independent review and were not released. Their route-mocked tests did not establish persistence. One earlier QA interception missed a request and received production HTTP 401; a subsequent independent read-only database check still found the original 6 message rows / 1 contributor and 0 guidance rows. The final harness instead blocked external requests before seeding, and its acceptance must not be conflated with those failed diagnostics.
