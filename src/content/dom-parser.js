@@ -400,6 +400,25 @@
       const roots = `${userSelector}, ${assistantSelector}`;
       const scope = document.querySelector('main, [role="main"]');
       if (!scope) return [];
+      // Anonymous ChatGPT uses labeled list turns, not data-message-author-role.
+      // Only direct children of the observed Conversation list are turn roots;
+      // role labels plus assistant DIL content avoid treating arbitrary li as replies.
+      if (platform === 'chatgpt' && !scope.querySelector(roots)) {
+        return Array.from(scope.querySelectorAll('ol[aria-label="Conversation"] > li'))
+          .filter(el => !el.closest('[contenteditable="true"], [aria-hidden="true"]'))
+          .map(el => {
+            const text = extractText(el);
+            let role, content;
+            if (text.startsWith('You said:')) {
+              role = 'user';
+              content = text.slice('You said:'.length).trim();
+            } else if (text.startsWith('ChatGPT said:')) {
+              role = 'assistant';
+              content = extractText(el.querySelector('section[aria-label="DIL content"]'));
+            } else return null;
+            return content ? { role, content, hash: hashString(`${role}:${content}`), timestamp: Date.now() } : null;
+          }).filter(Boolean);
+      }
       return Array.from(scope.querySelectorAll(roots))
         .filter(el => !el.parentElement.closest(roots) && !el.closest('[contenteditable="true"], [aria-hidden="true"]'))
         .map(el => {
@@ -503,7 +522,7 @@
     if (!result) return;
     
     const { snapshot, hash } = result;
-    previousRoots = Array.from(document.querySelectorAll('[data-message-author-role], [data-user-message-bubble], [data-testid="user-message"], [data-testid="assistant-message"], .font-claude-response'));
+    previousRoots = Array.from(document.querySelectorAll('[data-message-author-role], ol[aria-label="Conversation"] > li, [data-user-message-bubble], [data-testid="user-message"], [data-testid="assistant-message"], .font-claude-response'));
     
     // Skip if no change
     if (hash === lastSnapshotHash) return;

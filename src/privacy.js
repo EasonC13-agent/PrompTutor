@@ -8,6 +8,7 @@
       let match;
       if (url.hostname === 'chatgpt.com' || url.hostname === 'chat.openai.com') {
         match = url.pathname.match(/^\/(?:c\/[^/]+|g\/[^/]+\/c\/[^/]+)\/?$/);
+        if (!match && url.hostname === 'chatgpt.com') match = url.pathname.match(/^\/uc\/[^/]+\/?$/);
       } else if (url.hostname === 'claude.ai') {
         match = url.pathname.match(/^\/chat\/[^/]+\/?$/);
       }
